@@ -1,19 +1,24 @@
 /**
  * PaymentModal.tsx
  * ----------------------------------------------------------------------------
- * Dummy ₹1500 / year payment wall used by both the /subscription page and the
- * paywall on the Apply button.
+ * Generic dummy payment wall used for every paid action in the app:
  *
- * Behaviour (per spec):
- *   • Three payment-method tabs: UPI, Card, Net Banking — all visual.
- *   • Inputs validate non-empty only.
- *   • Clicking "Pay ₹1500" shows a 1.5s spinner then succeeds.
- *   • On success we insert (or upsert) a row into public.subscriptions with
- *     expires_at = now() + 365 days, then call onSuccess() so the parent can
- *     refresh subscription status and (in the paywall case) auto-open Apply.
+ *   purpose='saathi_plus_annual' → buy / renew the annual plan
+ *   purpose='scheme_pack'        → buy a 45-day pack for one scheme
+ *   purpose='topup_call'         → +1 consultation call onto an active plan
+ *   purpose='topup_visit'        → +1 home visit onto an active plan
  *
- * Honest disclosure: a small grey line under the button reminds the user
- * this is a demo flow.
+ * The modal is intentionally dumb about pricing — it shows whatever amount
+ * the caller hands it. The caller is responsible for computing the price
+ * (with concession applied) so the displayed amount, the inserted
+ * amount_paid, and the concession_applied flag are always in sync.
+ *
+ * On a successful dummy payment we:
+ *   1. Insert into the right Supabase table (subscriptions / scheme_packs /
+ *      topup_purchases) and, for top-ups, increment the parent quota.
+ *   2. Insert a notification row so the user sees the activation immediately.
+ *   3. Toast and call onSuccess(), which lets the parent (Paywall) chain
+ *      into the Apply modal seamlessly.
  */
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -26,35 +31,74 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+export type PaymentPurpose =
+  | "saathi_plus_annual"
+  | "scheme_pack"
+  | "topup_call"
+  | "topup_visit";
+
+export interface PaymentResult {
+  /** Type of plan that was created or topped up. */
+  purpose: PaymentPurpose;
+  /** ID of the new (or updated) subscription / pack row, when relevant. */
+  rowId?: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Called after the dummy payment AND the subscriptions insert both succeed. */
-  onSuccess?: () => void;
+  /** Final price after concession, in whole rupees. */
+  amount: number;
+  /** Original price before concession (for the strike-through display). */
+  fullPrice: number;
+  /** Whether the displayed amount already has the concession baked in. */
+  concessionApplied: boolean;
+  /** Human-readable concession reason, if any. */
+  concessionReason: string | null;
+  purpose: PaymentPurpose;
+  /** Required when purpose === 'scheme_pack'. */
+  schemeId?: string | null;
+  /** Pretty scheme name for the heading & notification (scheme_pack only). */
+  schemeName?: string | null;
+  /** Required when purpose is a topup — points at the plan to top up. */
+  topupTargetId?: string | null;
+  topupAppliesTo?: "saathi_plus_annual" | "scheme_pack" | null;
+  onSuccess?: (result: PaymentResult) => void;
 }
 
-const PRICE = 1500;
-
-export default function PaymentModal({ open, onClose, onSuccess }: Props) {
+export default function PaymentModal({
+  open, onClose, amount, fullPrice, concessionApplied, concessionReason,
+  purpose, schemeId, schemeName, topupTargetId, topupAppliesTo, onSuccess,
+}: Props) {
   const { user } = useAuth();
 
-  // Active tab — we only persist the chosen method as a string into the DB.
+  // Active tab — we persist the chosen method as a string into the DB.
   const [method, setMethod] = useState<"upi" | "card" | "netbanking">("upi");
-  // Per-tab inputs — required only that they are non-empty.
   const [upi, setUpi] = useState("");
   const [cardNumber, setCardNumber] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
   const [bank, setBank] = useState("");
-
   const [paying, setPaying] = useState(false);
 
+  /** Heading copy varies by purpose. */
+  const heading = (() => {
+    switch (purpose) {
+      case "saathi_plus_annual": return "Complete Saathi Plus Payment";
+      case "scheme_pack":
+        return schemeName ? `Complete Saathi Pack Payment for ${schemeName}` : "Complete Saathi Pack Payment";
+      case "topup_call":  return "Purchase Extra Consultation Call";
+      case "topup_visit": return "Purchase Extra Agent Home Visit";
+    }
+  })();
+
   /**
-   * Fail the user-fast if the active tab's inputs are blank, otherwise
-   * simulate a 1.5s gateway round-trip and persist the subscription row.
+   * Run the dummy gateway, then perform the right Supabase mutations
+   * for this purpose. Each branch is independent; they all end with
+   * onSuccess() + onClose() on success, or an inline toast on error.
    */
   async function handlePay() {
-    // Per-method non-empty validation.
+    // Per-method non-empty validation only (this is a dummy gateway).
     if (method === "upi" && !upi.trim()) { toast.error("Please enter your UPI ID."); return; }
     if (method === "card") {
       if (!cardNumber.trim() || !cardExpiry.trim() || !cardCvv.trim()) {
@@ -63,42 +107,142 @@ export default function PaymentModal({ open, onClose, onSuccess }: Props) {
       }
     }
     if (method === "netbanking" && !bank.trim()) { toast.error("Please select a bank."); return; }
-    if (!user) { toast.error("Please sign in to subscribe."); return; }
+    if (!user) { toast.error("Please sign in to continue."); return; }
+    if (purpose === "scheme_pack" && !schemeId) { toast.error("Missing scheme."); return; }
+    if ((purpose === "topup_call" || purpose === "topup_visit") &&
+        (!topupTargetId || !topupAppliesTo)) {
+      toast.error("Missing top-up target.");
+      return;
+    }
 
     setPaying(true);
-    // Simulated payment latency — purely cosmetic.
+    // Simulated gateway latency — purely cosmetic.
     await new Promise((r) => setTimeout(r, 1500));
 
     try {
-      // Compute expiry exactly 365 days from now.
-      const expires = new Date();
-      expires.setDate(expires.getDate() + 365);
-
-      // Build a fake reference so we can demo "Renew Early" later.
       const ref = `DEMO-${Date.now().toString(36).toUpperCase()}`;
+      let result: PaymentResult = { purpose };
 
-      // Upsert on user_id (which is UNIQUE on the table) so renewals just
-      // overwrite the existing row instead of throwing a duplicate-key error.
-      const { error } = await supabase
-        .from("subscriptions")
-        .upsert(
-          {
+      if (purpose === "saathi_plus_annual") {
+        // ───────── Annual plan: insert a fresh row valid for 365 days ─────────
+        const expires = new Date();
+        expires.setDate(expires.getDate() + 365);
+        const { data, error } = await supabase
+          .from("subscriptions")
+          .upsert({
             user_id: user.id,
+            plan: "annual_1500",
+            plan_type: "saathi_plus_annual",
             started_at: new Date().toISOString(),
             expires_at: expires.toISOString(),
-            plan: "annual_1500",
             payment_method: method,
             payment_reference: ref,
             is_active: true,
-          },
-          { onConflict: "user_id" },
-        );
-      if (error) throw error;
+            calls_total: 15,
+            calls_used: 0,
+            visits_total: 3,
+            visits_used: 0,
+            amount_paid: amount,
+            concession_applied: concessionApplied,
+          }, { onConflict: "user_id" })
+          .select("id")
+          .single();
+        if (error) throw error;
+        result = { purpose, rowId: data?.id };
 
-      toast.success(
-        `Subscription active until ${expires.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}`,
-      );
-      onSuccess?.();
+        await supabase.from("notifications").insert({
+          user_id: user.id,
+          title: "Saathi Plus activated",
+          body: `Valid until ${expires.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}. 15 calls and 3 agent visits available for the year.`,
+        });
+        toast.success(`Saathi Plus active until ${expires.toLocaleDateString()}`);
+
+      } else if (purpose === "scheme_pack") {
+        // ───────── Scheme-specific Pack: 45-day validity ─────────
+        const expires = new Date();
+        expires.setDate(expires.getDate() + 45);
+        const { data, error } = await supabase
+          .from("scheme_packs")
+          .insert({
+            user_id: user.id,
+            scheme_id: schemeId!,
+            expires_at: expires.toISOString(),
+            calls_total: 3,
+            calls_used: 0,
+            visits_total: 1,
+            visits_used: 0,
+            amount_paid: amount,
+            concession_applied: concessionApplied,
+            payment_reference: ref,
+            is_active: true,
+          })
+          .select("id")
+          .single();
+        if (error) throw error;
+        result = { purpose, rowId: data?.id };
+
+        await supabase.from("notifications").insert({
+          user_id: user.id,
+          title: schemeName ? `Pack purchased for ${schemeName}` : "Saathi Pack purchased",
+          body: `3 calls and 1 visit available. Expires ${expires.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}.`,
+        });
+        toast.success("Pack activated.");
+
+      } else {
+        // ───────── Top-ups: insert purchase row + bump parent quota ─────────
+        const isCall = purpose === "topup_call";
+        const insertCol = isCall ? "calls_total" : "visits_total";
+        const insertedAmount = amount; // top-ups are always full price
+
+        // 1. Record the purchase.
+        const topupInsert: {
+          user_id: string;
+          topup_type: "extra_call" | "extra_visit";
+          units_added: number;
+          amount_paid: number;
+          applies_to: "saathi_plus_annual" | "scheme_pack";
+          payment_reference: string;
+          subscription_id?: string;
+          scheme_pack_id?: string;
+        } = {
+          user_id: user.id,
+          topup_type: isCall ? "extra_call" : "extra_visit",
+          units_added: 1,
+          amount_paid: insertedAmount,
+          applies_to: topupAppliesTo!,
+          payment_reference: ref,
+        };
+        if (topupAppliesTo === "saathi_plus_annual") topupInsert.subscription_id = topupTargetId!;
+        else topupInsert.scheme_pack_id = topupTargetId!;
+
+        const { error: tErr } = await supabase.from("topup_purchases").insert(topupInsert);
+        if (tErr) throw tErr;
+
+        // 2. Bump the parent plan's quota by reading current value then +1.
+        //    (We can't use an SQL increment via the JS client without an RPC.)
+        const targetTable = topupAppliesTo === "saathi_plus_annual" ? "subscriptions" : "scheme_packs";
+        const { data: cur, error: readErr } = await supabase
+          .from(targetTable)
+          .select(`${insertCol}`)
+          .eq("id", topupTargetId!)
+          .single();
+        if (readErr) throw readErr;
+        const currentVal = (cur as Record<string, number>)[insertCol] ?? 0;
+        const { error: upErr } = await supabase
+          .from(targetTable)
+          .update({ [insertCol]: currentVal + 1 })
+          .eq("id", topupTargetId!);
+        if (upErr) throw upErr;
+
+        await supabase.from("notifications").insert({
+          user_id: user.id,
+          title: isCall ? "Extra call added" : "Extra visit added",
+          body: "Your quota has been increased.",
+        });
+        toast.success(isCall ? "Extra call added to your plan." : "Extra visit added to your plan.");
+      }
+
+      onSuccess?.(result);
       onClose();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Payment could not be recorded.";
@@ -112,14 +256,19 @@ export default function PaymentModal({ open, onClose, onSuccess }: Props) {
     <Dialog open={open} onOpenChange={(o) => !o && !paying && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-primary">Complete Payment</DialogTitle>
+          <DialogTitle className="text-primary">{heading}</DialogTitle>
         </DialogHeader>
 
-        {/* Amount summary */}
+        {/* Amount summary — strike-through when concession applied */}
         <div className="rounded-lg border border-[#AACDE0] bg-[#D6E4F0]/30 p-4 text-center">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Amount due</p>
-          <p className="mt-1 text-3xl font-extrabold text-primary">₹{PRICE.toLocaleString("en-IN")}</p>
-          <p className="text-xs text-muted-foreground">WelfareConnect Premium · 1 year</p>
+          <p className="mt-1 text-3xl font-extrabold text-primary">₹{amount.toLocaleString("en-IN")}</p>
+          {concessionApplied && (
+            <p className="mt-1 text-xs text-[#16A34A]">
+              50% concession applied{concessionReason ? ` — ${concessionReason}` : ""}
+              <span className="ml-1 text-muted-foreground line-through">₹{fullPrice.toLocaleString("en-IN")}</span>
+            </p>
+          )}
         </div>
 
         {/* Method tabs */}
@@ -160,7 +309,7 @@ export default function PaymentModal({ open, onClose, onSuccess }: Props) {
 
         <Button onClick={handlePay} disabled={paying} size="lg" className="mt-2 w-full font-semibold">
           {paying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {paying ? "Processing…" : `Pay ₹${PRICE.toLocaleString("en-IN")}`}
+          {paying ? "Processing…" : `Pay ₹${amount.toLocaleString("en-IN")}`}
         </Button>
         <p className="mt-1 text-center text-xs text-muted-foreground">
           This is a demo payment. No real transaction will occur.

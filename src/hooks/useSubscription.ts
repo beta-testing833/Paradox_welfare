@@ -1,72 +1,79 @@
 /**
  * useSubscription.ts
  * ----------------------------------------------------------------------------
- * Single source of truth for premium subscription status.
+ * Reads the user's active Saathi Plus annual subscription (if any) and
+ * exposes summary fields for the navbar / Profile / Status pages.
  *
  * Returns:
- *   • isActive       — true when the current user has an active, non-expired sub
- *   • expiresAt      — ISO date string of when the sub expires, or null
- *   • daysRemaining  — integer days until expiry (≥ 0), or null when no sub
- *   • loading        — true until the first Supabase round-trip resolves
+ *   • isActive       — true when the user has an active Saathi Plus row that
+ *                      hasn't yet expired
+ *   • expiresAt      — ISO string of when the Plus sub expires (null if none)
+ *   • daysRemaining  — integer days until expiry (null when no sub)
+ *   • callsTotal/callsUsed/visitsTotal/visitsUsed — quota counters
+ *   • subscription   — the full row, or null
+ *   • loading        — true until the first round-trip resolves
  *   • refresh()      — manual re-fetch (call after a successful payment)
  *
- * Usage:
- *   const { isActive, daysRemaining, refresh } = useSubscription();
- *
- * Implementation notes:
- *   • All Supabase calls are wrapped in try/catch so transient failures
- *     surface as "no active subscription" rather than crashing the UI.
- *   • Re-runs whenever the auth user changes so a fresh sign-in immediately
- *     picks up that user's subscription row.
+ * Note on legacy rows: any pre-existing annual_1500 subscriptions were
+ * grandfathered as plan_type='saathi_plus_annual' in the migration, so
+ * they show up here automatically with default 15 calls / 3 visits.
  */
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
+export interface SubscriptionRow {
+  id: string;
+  expires_at: string;
+  is_active: boolean;
+  calls_total: number;
+  calls_used: number;
+  visits_total: number;
+  visits_used: number;
+}
+
 export interface SubscriptionState {
   isActive: boolean;
   expiresAt: string | null;
   daysRemaining: number | null;
+  callsTotal: number;
+  callsUsed: number;
+  visitsTotal: number;
+  visitsUsed: number;
+  subscription: SubscriptionRow | null;
   loading: boolean;
   refresh: () => Promise<void>;
 }
 
 export function useSubscription(): SubscriptionState {
   const { user } = useAuth();
+  const [row, setRow] = useState<SubscriptionRow | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  /**
-   * Fetch the user's most recent subscription row and decide whether it is
-   * still valid. We treat "no row" and "expired row" identically — both mean
-   * the user is not premium.
-   */
   const refresh = useCallback(async () => {
     if (!user) {
-      // Anonymous visitor — never premium.
-      setIsActive(false);
-      setExpiresAt(null);
-      setDaysRemaining(null);
+      setRow(null); setIsActive(false); setExpiresAt(null); setDaysRemaining(null);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      // RLS makes sure we only ever read this user's own row.
+      // RLS ensures we only see this user's own row.
       const { data, error } = await supabase
         .from("subscriptions")
-        .select("expires_at, is_active")
+        .select("id, expires_at, is_active, calls_total, calls_used, visits_total, visits_used")
         .eq("user_id", user.id)
+        .eq("plan_type", "saathi_plus_annual")
+        .order("expires_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
-
       if (error) throw error;
 
       if (!data) {
-        setIsActive(false);
-        setExpiresAt(null);
-        setDaysRemaining(null);
+        setRow(null); setIsActive(false); setExpiresAt(null); setDaysRemaining(null);
         return;
       }
 
@@ -74,30 +81,35 @@ export function useSubscription(): SubscriptionState {
       const now = new Date();
       const stillValid = data.is_active && expires.getTime() > now.getTime();
 
-      // Round to whole days; never go negative.
       const msPerDay = 1000 * 60 * 60 * 24;
       const days = stillValid
         ? Math.max(0, Math.ceil((expires.getTime() - now.getTime()) / msPerDay))
         : 0;
 
+      setRow(data as SubscriptionRow);
       setIsActive(stillValid);
       setExpiresAt(data.expires_at);
       setDaysRemaining(days);
     } catch {
-      // Treat any failure as "not premium" — fail closed so we never
-      // accidentally unlock paid features when the DB call breaks.
-      setIsActive(false);
-      setExpiresAt(null);
-      setDaysRemaining(null);
+      // Fail closed.
+      setRow(null); setIsActive(false); setExpiresAt(null); setDaysRemaining(null);
     } finally {
       setLoading(false);
     }
   }, [user]);
 
-  // Re-fetch whenever the signed-in user changes.
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
-  return { isActive, expiresAt, daysRemaining, loading, refresh };
+  return {
+    isActive,
+    expiresAt,
+    daysRemaining,
+    callsTotal: row?.calls_total ?? 0,
+    callsUsed: row?.calls_used ?? 0,
+    visitsTotal: row?.visits_total ?? 0,
+    visitsUsed: row?.visits_used ?? 0,
+    subscription: row,
+    loading,
+    refresh,
+  };
 }
