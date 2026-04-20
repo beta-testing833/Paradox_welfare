@@ -246,7 +246,7 @@ export default function BookNextCallModal({
               </div>
               <p className="text-sm text-muted-foreground">
                 Top up an extra call for ₹{PRICES.topup_call}, or buy a Saathi Pack
-                dedicated to this scheme for ₹{PRICES.scheme_pack}.
+                dedicated to this scheme for ₹{PRICES.saathi_pack_full}.
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <Button onClick={() => setTopupCallOpen(true)} className="font-semibold">
