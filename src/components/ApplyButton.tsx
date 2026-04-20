@@ -3,24 +3,22 @@
  * ----------------------------------------------------------------------------
  * Shared "Apply" CTA used on every scheme card and the scheme detail page.
  *
- * Encapsulates the full premium-gating dance so callers don't have to repeat
- * it in three places:
+ * Gating logic (executed on click):
+ *   1. Signed-out  → save intent, send to /auth, return there.
+ *   2. Has Saathi Plus with calls remaining          → open Apply modal.
+ *   3. Has a Saathi Pack for THIS scheme with calls  → open Apply modal.
+ *   4. Has Saathi Plus but quota exhausted           → Paywall with top-ups.
+ *   5. Otherwise (no plan / pack for other scheme)   → Paywall.
  *
- *   1. If the user is signed out → save intent + send to /auth, return there.
- *   2. If signed-in but NOT premium → show <PaywallModal/>; on successful
- *      payment auto-open <ApplyModal/> so the user resumes their flow.
- *   3. If signed-in and premium    → open <ApplyModal/> directly.
- *
- * The button's visual style is locked: navy fill + white text, right-arrow
- * icon, no person icon. Use the `size` prop to switch between card-size and
- * hero-size on the detail page.
+ * Visual style: navy fill + white text, right-arrow icon. Use the `size`
+ * prop to switch between card-size and hero-size on the detail page.
  */
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSubscription } from "@/hooks/useSubscription";
+import { usePlanAccess } from "@/hooks/usePlanAccess";
 import ApplyModal from "@/components/ApplyModal";
 import PaywallModal from "@/components/PaywallModal";
 
@@ -41,7 +39,7 @@ export default function ApplyButton({
   scheme, size = "default", className, label = "Apply", stopCardPropagation,
 }: Props) {
   const { user } = useAuth();
-  const { isActive, loading } = useSubscription();
+  const { access, plus, pack, loading, refresh } = usePlanAccess(scheme.id);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -58,15 +56,17 @@ export default function ApplyButton({
       return;
     }
 
-    // Subscription state still loading → ignore the click for half a second
-    // rather than risk opening the wrong modal.
+    // Plan state still loading → swallow the click; user can retry in 200ms.
     if (loading) return;
 
-    if (!isActive) {
-      setPaywallOpen(true);
+    // Plus or Pack with quota → open Apply modal directly.
+    if (access === "plus" || access === "pack") {
+      setApplyOpen(true);
       return;
     }
-    setApplyOpen(true);
+
+    // Plus quota exhausted, or no plan at all → Paywall.
+    setPaywallOpen(true);
   }
 
   return (
@@ -81,16 +81,22 @@ export default function ApplyButton({
 
       <ApplyModal
         open={applyOpen}
-        onClose={() => setApplyOpen(false)}
+        onClose={() => { setApplyOpen(false); void refresh(); }}
         scheme={scheme}
+        plus={access === "plus" ? plus : null}
+        pack={access === "pack" ? pack : null}
       />
 
       <PaywallModal
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}
-        // After dummy payment succeeds → automatically open the Apply modal.
-        onSubscribed={() => {
+        scheme={scheme}
+        exhaustedPlus={access === "plus_quota_exhausted" ? plus : null}
+        // After ANY successful purchase from inside the paywall, automatically
+        // open the Apply modal so the user resumes their original flow.
+        onUnlocked={async () => {
           setPaywallOpen(false);
+          await refresh();
           setApplyOpen(true);
         }}
       />
