@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      agents: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          is_active: boolean | null
+          languages: string[] | null
+          phone: string | null
+          specialization: string[] | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          is_active?: boolean | null
+          languages?: string[] | null
+          phone?: string | null
+          specialization?: string[] | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          is_active?: boolean | null
+          languages?: string[] | null
+          phone?: string | null
+          specialization?: string[] | null
+        }
+        Relationships: []
+      }
       application_documents: {
         Row: {
           application_id: string
@@ -59,7 +92,9 @@ export type Database = {
       applications: {
         Row: {
           aadhar: string | null
+          agent_assigned_at: string | null
           applied_at: string
+          assigned_agent_id: string | null
           consultation_date: string | null
           consultation_status: string | null
           consultation_time_slot: string | null
@@ -68,12 +103,15 @@ export type Database = {
           ngo_id: string | null
           scheme_id: string | null
           status: string
+          support_expires_at: string | null
           user_id: string
           visit_requested: boolean | null
         }
         Insert: {
           aadhar?: string | null
+          agent_assigned_at?: string | null
           applied_at?: string
+          assigned_agent_id?: string | null
           consultation_date?: string | null
           consultation_status?: string | null
           consultation_time_slot?: string | null
@@ -82,12 +120,15 @@ export type Database = {
           ngo_id?: string | null
           scheme_id?: string | null
           status?: string
+          support_expires_at?: string | null
           user_id: string
           visit_requested?: boolean | null
         }
         Update: {
           aadhar?: string | null
+          agent_assigned_at?: string | null
           applied_at?: string
+          assigned_agent_id?: string | null
           consultation_date?: string | null
           consultation_status?: string | null
           consultation_time_slot?: string | null
@@ -96,10 +137,18 @@ export type Database = {
           ngo_id?: string | null
           scheme_id?: string | null
           status?: string
+          support_expires_at?: string | null
           user_id?: string
           visit_requested?: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "applications_assigned_agent_id_fkey"
+            columns: ["assigned_agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "applications_ngo_id_fkey"
             columns: ["ngo_id"]
@@ -196,6 +245,64 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      interactions: {
+        Row: {
+          agent_id: string | null
+          application_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          id: string
+          interaction_type: string
+          notes: string | null
+          scheduled_at: string | null
+        }
+        Insert: {
+          agent_id?: string | null
+          application_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          interaction_type: string
+          notes?: string | null
+          scheduled_at?: string | null
+        }
+        Update: {
+          agent_id?: string | null
+          application_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          interaction_type?: string
+          notes?: string | null
+          scheduled_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interactions_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interactions_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interactions_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "upcoming_consultations"
+            referencedColumns: ["application_id"]
+          },
+        ]
       }
       ngos: {
         Row: {
@@ -543,6 +650,32 @@ export type Database = {
       }
     }
     Views: {
+      agent_bookings: {
+        Row: {
+          agent_id: string | null
+          booking_date: string | null
+          slot_start: string | null
+        }
+        Insert: {
+          agent_id?: string | null
+          booking_date?: never
+          slot_start?: never
+        }
+        Update: {
+          agent_id?: string | null
+          booking_date?: never
+          slot_start?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interactions_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       revenue_summary: {
         Row: {
           day: string | null
