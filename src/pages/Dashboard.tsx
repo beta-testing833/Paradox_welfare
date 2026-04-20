@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { calculateScore, type UserForm, type EligibilityCriteria } from "@/lib/eligibilityScorer";
 import { FileText, Folder, History, ListChecks, Sparkles, Zap, BadgeCheck } from "lucide-react";
+import ApplyButton from "@/components/ApplyButton";
 
 const SESSION_KEY = "welfareconnect.elig.form";
 
@@ -185,9 +186,9 @@ export default function Dashboard() {
                       <Badge className="bg-success text-success-foreground">{s.score}% match</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{s.category}</p>
-                    <Button asChild size="sm" variant="outline" className="mt-2 w-full">
-                      <Link to={`/schemes/${s.id}/ngos`}>Find NGO Help</Link>
-                    </Button>
+                    <div className="mt-2">
+                      <ApplyButton scheme={{ id: s.id, name: s.name }} size="sm" className="w-full font-semibold" />
+                    </div>
                   </li>
                 ))}
               </ul>
