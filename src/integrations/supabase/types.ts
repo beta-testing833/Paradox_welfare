@@ -47,12 +47,22 @@ export type Database = {
             referencedRelation: "applications"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "application_documents_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "upcoming_consultations"
+            referencedColumns: ["application_id"]
+          },
         ]
       }
       applications: {
         Row: {
           aadhar: string | null
           applied_at: string
+          consultation_date: string | null
+          consultation_status: string | null
+          consultation_time_slot: string | null
           id: string
           message: string | null
           ngo_id: string | null
@@ -63,6 +73,9 @@ export type Database = {
         Insert: {
           aadhar?: string | null
           applied_at?: string
+          consultation_date?: string | null
+          consultation_status?: string | null
+          consultation_time_slot?: string | null
           id?: string
           message?: string | null
           ngo_id?: string | null
@@ -73,6 +86,9 @@ export type Database = {
         Update: {
           aadhar?: string | null
           applied_at?: string
+          consultation_date?: string | null
+          consultation_status?: string | null
+          consultation_time_slot?: string | null
           id?: string
           message?: string | null
           ngo_id?: string | null
@@ -108,12 +124,18 @@ export type Database = {
           family_annual_income: number | null
           full_name: string | null
           gender: string | null
+          gov_employee_id: string | null
           guardian_annual_income: number | null
           guardian_not_applicable: boolean | null
           id: string
           is_bpl: boolean | null
+          is_dbt_eligible: boolean | null
           is_distressed: boolean | null
+          is_gov_employee: boolean | null
+          is_minority: boolean | null
+          marital_status: string | null
           occupation: string | null
+          preferred_benefit_type: string | null
           priority_search: string | null
           state_of_residence: string | null
           user_id: string
@@ -128,12 +150,18 @@ export type Database = {
           family_annual_income?: number | null
           full_name?: string | null
           gender?: string | null
+          gov_employee_id?: string | null
           guardian_annual_income?: number | null
           guardian_not_applicable?: boolean | null
           id?: string
           is_bpl?: boolean | null
+          is_dbt_eligible?: boolean | null
           is_distressed?: boolean | null
+          is_gov_employee?: boolean | null
+          is_minority?: boolean | null
+          marital_status?: string | null
           occupation?: string | null
+          preferred_benefit_type?: string | null
           priority_search?: string | null
           state_of_residence?: string | null
           user_id: string
@@ -148,12 +176,18 @@ export type Database = {
           family_annual_income?: number | null
           full_name?: string | null
           gender?: string | null
+          gov_employee_id?: string | null
           guardian_annual_income?: number | null
           guardian_not_applicable?: boolean | null
           id?: string
           is_bpl?: boolean | null
+          is_dbt_eligible?: boolean | null
           is_distressed?: boolean | null
+          is_gov_employee?: boolean | null
+          is_minority?: boolean | null
+          marital_status?: string | null
           occupation?: string | null
+          preferred_benefit_type?: string | null
           priority_search?: string | null
           state_of_residence?: string | null
           user_id?: string
@@ -334,9 +368,62 @@ export type Database = {
         }
         Relationships: []
       }
+      subscriptions: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          is_active: boolean
+          payment_method: string | null
+          payment_reference: string | null
+          plan: string
+          started_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          is_active?: boolean
+          payment_method?: string | null
+          payment_reference?: string | null
+          plan?: string
+          started_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          payment_method?: string | null
+          payment_reference?: string | null
+          plan?: string
+          started_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      upcoming_consultations: {
+        Row: {
+          aadhar: string | null
+          application_id: string | null
+          applied_at: string | null
+          consultation_date: string | null
+          consultation_status: string | null
+          consultation_time_slot: string | null
+          full_name: string | null
+          phone: string | null
+          scheme_name: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never
