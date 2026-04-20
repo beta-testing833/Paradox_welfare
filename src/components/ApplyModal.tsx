@@ -41,6 +41,7 @@ import { toast } from "sonner";
 import { Loader2, Upload, X, FileText, CalendarClock, AlertTriangle } from "lucide-react";
 import PaymentModal from "@/components/PaymentModal";
 import { PRICES } from "@/lib/concession";
+import { combineDateAndSlot, pickAgentForNewApplication, slotStartHHMM } from "@/lib/agentAssignment";
 import type { ActivePlus, ActivePack } from "@/hooks/usePlanAccess";
 
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
@@ -163,6 +164,25 @@ export default function ApplyModal({ open, onClose, scheme, plus, pack }: Props)
 
     setBusy(true);
     try {
+      // Build the consultation timestamp (used for both the application row
+      // AND the interactions rows that drive the timeline + agent calendar).
+      const scheduledAtIso = combineDateAndSlot(date, slot);
+
+      // Determine the support window expiry from the source plan. This locks
+      // in when "Book Next Call" is allowed for this scheme.
+      const supportExpiresAt = source.row.expires_at;
+
+      // Pick the first agent for this scheme (load-balanced, specialization-
+      // matched, slot-conflict-aware). Done BEFORE the insert so we can write
+      // assigned_agent_id atomically with the row.
+      // We also need the scheme's category to pick the best specialization.
+      let schemeCategory: string | null = null;
+      const { data: schemeRow } = await supabase
+        .from("schemes").select("category").eq("id", scheme.id).maybeSingle();
+      schemeCategory = schemeRow?.category ?? null;
+
+      const agentId = await pickAgentForNewApplication(schemeCategory, scheduledAtIso);
+
       // 1) Create application row.
       const { data: app, error: appErr } = await supabase
         .from("applications")
@@ -176,6 +196,9 @@ export default function ApplyModal({ open, onClose, scheme, plus, pack }: Props)
           aadhar,
           message,
           visit_requested: requestVisit,
+          support_expires_at: supportExpiresAt,
+          assigned_agent_id: agentId,
+          agent_assigned_at: agentId ? new Date().toISOString() : null,
         })
         .select()
         .single();
@@ -195,7 +218,28 @@ export default function ApplyModal({ open, onClose, scheme, plus, pack }: Props)
         if (docErr) throw docErr;
       }
 
-      // 3) Debit the source plan's quota: +1 call, +1 visit (if requested).
+      // 3) Insert the initial timeline interactions for the booked
+      //    consultation (and the optional agent home visit).
+      await supabase.from("interactions").insert({
+        application_id: app.id,
+        agent_id: agentId,
+        interaction_type: "call_booked",
+        scheduled_at: scheduledAtIso,
+        notes: `First consultation call for ${scheme.name}`,
+        created_by: "user",
+      });
+      if (requestVisit) {
+        await supabase.from("interactions").insert({
+          application_id: app.id,
+          agent_id: agentId,
+          interaction_type: "visit_booked",
+          scheduled_at: scheduledAtIso,
+          notes: `First agent home visit for ${scheme.name}`,
+          created_by: "user",
+        });
+      }
+
+      // 4) Debit the source plan's quota: +1 call, +1 visit (if requested).
       const newCallsUsed  = source.row.calls_used + 1;
       const newVisitsUsed = source.row.visits_used + (requestVisit ? 1 : 0);
       if (source.kind === "plus") {
@@ -212,7 +256,7 @@ export default function ApplyModal({ open, onClose, scheme, plus, pack }: Props)
         if (qErr) throw qErr;
       }
 
-      // 4) Notify the user.
+      // 5) Notify the user.
       const friendlyDate = new Date(date).toLocaleDateString(undefined, {
         weekday: "short", day: "2-digit", month: "short", year: "numeric",
       });
@@ -221,6 +265,10 @@ export default function ApplyModal({ open, onClose, scheme, plus, pack }: Props)
         title: "Consultation booked",
         body: `Your call is scheduled for ${friendlyDate} at ${slot}. A consultant will reach you then.`,
       });
+
+      // Silence the unused-import warning for slotStartHHMM; it's exported
+      // for callers but not directly invoked in this file.
+      void slotStartHHMM;
 
       toast.success("Application submitted! Track its status in Status Tracking.");
       onClose();
