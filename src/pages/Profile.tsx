@@ -88,7 +88,7 @@ export default function Profile() {
   async function handleForgot() {
     if (!user?.email) return;
     const { error } = await resetPassword(user.email);
-    if (error) toast.error(error.message);
+    if (error) toast.error(error);
     else toast.success("Reset link sent to your email.");
   }
 
