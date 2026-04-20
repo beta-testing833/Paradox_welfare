@@ -200,6 +200,17 @@ export function calculateScore(
     return 0;
   }
 
+  // ================== Distress bonus (Sprint 5, +5 pts, capped at 100) ==================
+  // When the user is BOTH BPL and in extreme distress, give an extra nudge to
+  // the schemes most likely to provide immediate relief: Food Security,
+  // Disability and Health. Cap is enforced by the final clamp below.
+  if (form.isBpl && form.isDistressed) {
+    const cat = (schemeMeta.category ?? "").toLowerCase();
+    if (cat === "food security" || cat === "disability" || cat === "health") {
+      score += 5;
+    }
+  }
+
   // Clamp into [0, 100] just in case future weight tweaks break the math.
   return Math.max(0, Math.min(100, score));
 }
