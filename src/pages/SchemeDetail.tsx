@@ -3,33 +3,21 @@
  * ----------------------------------------------------------------------------
  * Route: /schemes/:schemeId
  *
- * Renders a single welfare scheme in detail. Reachable from:
- *   • The "Your Matches" cards on /eligibility (Sprint 5 change #5)
- *   • Any future deep-link or share URL.
- *
- * Sections (top → bottom):
- *   1. Scheme name + Verified badge + category pill
- *   2. Full description
- *   3. Benefit amount (only if present)
- *   4. Documents Required — fully expanded list (no accordion collapse)
- *   5. Official Portal URL — opens in a new tab
- *   6. Find NGO Help button → /schemes/:id/ngos
- *
- * Data is fetched via react-query against public.schemes (no auth needed).
+ * Sprint 6 changes:
+ *   • Primary CTA is now the new "Apply" button (premium-gated). The old
+ *     "Find NGO Help" link is gone.
+ *   • All text on the navy banner is forced to pure white for readability.
+ *   • Verified badge on the banner uses a white stroke + white border.
  */
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { BadgeCheck, ExternalLink, Users, ArrowLeft, FileText } from "lucide-react";
+import { BadgeCheck, ExternalLink, ArrowLeft, FileText } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import ApplyButton from "@/components/ApplyButton";
 
-/**
- * Local row shape — narrowed to just the columns we need for the detail
- * page so we don't accidentally render columns the spec doesn't ask for.
- */
 interface SchemeDetailRow {
   id: string;
   name: string;
@@ -42,12 +30,10 @@ interface SchemeDetailRow {
 }
 
 export default function SchemeDetail() {
-  // Pull the dynamic :schemeId segment out of the route.
   const { schemeId } = useParams<{ schemeId: string }>();
   const navigate = useNavigate();
 
-  // Fetch the single scheme row by id. Wrapped in try/catch via the queryFn
-  // so any Supabase error surfaces as a toast rather than a silent failure.
+  // Fetch the single scheme row by id with try/catch + toast on failure.
   const { data, isLoading, error } = useQuery({
     queryKey: ["scheme", schemeId],
     enabled: !!schemeId,
@@ -61,7 +47,6 @@ export default function SchemeDetail() {
         if (error) throw error;
         return data as SchemeDetailRow | null;
       } catch (e: unknown) {
-        // Surface the failure to the user — do not swallow.
         const msg = e instanceof Error ? e.message : "Could not load scheme";
         toast({ title: "Failed to load scheme", description: msg, variant: "destructive" });
         throw e;
@@ -69,7 +54,6 @@ export default function SchemeDetail() {
     },
   });
 
-  // ---- Loading / error / not-found states ----
   if (isLoading) {
     return <div className="container py-10 text-sm text-muted-foreground">Loading scheme…</div>;
   }
@@ -84,39 +68,37 @@ export default function SchemeDetail() {
     );
   }
 
-  // ---- Main render ----
   return (
     <div className="container max-w-3xl py-10 animate-fade-in">
-      {/* Back nav — keeps the page navigable when reached via deep link too. */}
       <Button variant="link" className="mb-3 px-0 text-primary" onClick={() => navigate(-1)}>
         <ArrowLeft className="mr-1 h-4 w-4" /> Back
       </Button>
 
       <Card className="shadow-elegant">
-        {/* Navy header bar to mirror the rest of the design system. */}
-        <CardHeader className="bg-primary text-primary-foreground rounded-t-lg">
-          <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-            <span>{data.name}</span>
-            {/* Verified badge — only shown when scheme.is_verified is true. */}
+        {/* Navy header — every text node is forced to pure white. */}
+        <CardHeader className="bg-primary rounded-t-lg text-white">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-lg text-white">
+            <span className="text-white">{data.name}</span>
             {data.is_verified && (
-              <BadgeCheck className="h-5 w-5 text-accent" aria-label="Verified scheme" />
+              // White-stroked verified mark — readable on navy.
+              <BadgeCheck className="h-5 w-5 text-white" aria-label="Verified scheme" />
             )}
           </CardTitle>
-          {/* Category pill renders inside the navy header for quick context. */}
+          {/* Category pill — transparent fill + 1px white border + white text */}
           {data.category && (
             <div className="mt-1">
-              <Badge className="bg-card text-primary hover:bg-card">{data.category}</Badge>
+              <span className="inline-block rounded-full border border-white/80 bg-transparent px-2.5 py-0.5 text-xs font-medium text-white">
+                {data.category}
+              </span>
             </div>
           )}
         </CardHeader>
 
         <CardContent className="space-y-6 p-6">
-          {/* Full description — left as a normal paragraph. */}
           {data.description && (
             <p className="text-sm leading-relaxed text-foreground">{data.description}</p>
           )}
 
-          {/* Benefit amount — only rendered when present, per spec. */}
           {data.benefit_amount && (
             <div className="rounded-md border border-border bg-secondary/40 p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -126,7 +108,6 @@ export default function SchemeDetail() {
             </div>
           )}
 
-          {/* Documents Required — fully expanded, no accordion. */}
           <div>
             <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-primary">
               <FileText className="h-4 w-4" /> Documents Required
@@ -142,7 +123,6 @@ export default function SchemeDetail() {
             )}
           </div>
 
-          {/* Official Portal URL — external link, new tab + safe rel attrs. */}
           {data.official_portal_url && (
             <div>
               <a
@@ -156,13 +136,9 @@ export default function SchemeDetail() {
             </div>
           )}
 
-          {/* Find NGO Help — routes to the existing filtered NGO view. */}
+          {/* Primary CTA — premium-gated Apply button (Sprint 6). */}
           <div className="pt-2">
-            <Button asChild size="lg" className="font-semibold">
-              <Link to={`/schemes/${data.id}/ngos`}>
-                <Users className="mr-2 h-4 w-4" /> Find NGO Help
-              </Link>
-            </Button>
+            <ApplyButton scheme={{ id: data.id, name: data.name }} size="lg" />
           </div>
         </CardContent>
       </Card>

@@ -4,19 +4,24 @@
  * Pure module that calculates how well a user's profile matches a welfare
  * scheme's eligibility criteria.
  *
- * Scoring weights (updated for Sprint 4 — geographic + economic targeting):
- *   • Income match      → 25 points  (was 30)
- *   • Age match         → 15 points  (was 20)
- *   • Category match    → 15 points  (was 20)  — PVTG/DNT count as ST sub-groups
- *   • Occupation match  → 15 points  (was 20)
- *   • Disability match  → 10 points  (unchanged)
- *   • State match       → 10 points  (NEW)
- *   • Area type match   →  5 points  (NEW)
- *   • BPL match         →  5 points  (NEW)
- * Total possible: 100. A scheme is "eligible" if score ≥ 60.
+ * Scoring weights (rebalanced for Sprint 6 — totals to exactly 100):
+ *   • Income match           → 20 points
+ *   • Age match              → 10 points
+ *   • Category match         → 15 points
+ *   • Occupation match       → 10 points
+ *   • Disability match       →  5 points
+ *   • State match            → 10 points
+ *   • Area type match        →  5 points
+ *   • BPL match              →  5 points
+ *   • Marital status match   →  5 points  (NEW)
+ *   • Gov. employee match    →  5 points  (NEW)
+ *   • Minority match         →  3 points  (NEW)
+ *   • DBT eligibility match  →  3 points  (NEW)
+ *   • Benefit type match     →  4 points  (NEW)
+ * Total possible: 100. Threshold for "eligible" remains ≥ 60.
  *
  * The Eligibility page treats schemes <60 as not-eligible; the priority-search
- * UI on /eligibility surfaces them in a separate "not eligible" rail.
+ * UI surfaces them in a separate "not eligible" rail.
  *
  * This module is intentionally PURE — no Supabase calls, no React hooks, no
  * side effects — so it can be unit-tested and reused on the Dashboard.
@@ -40,6 +45,13 @@ export interface UserForm {
   guardianAnnualIncome?: number | null; // only when isBpl === false
   guardianNotApplicable?: boolean;   // pairs with guardianAnnualIncome
   prioritySearch?: string;   // free-text, used by the page (not by scorer)
+  // ---- Sprint 6 additions ----
+  maritalStatus?: string;            // Single | Married | Widowed | Divorced | Separated
+  isGovEmployee?: boolean;           // pill toggle
+  govEmployeeId?: string;            // conditional, only when isGovEmployee=true
+  isMinority?: boolean;              // pill toggle
+  isDbtEligible?: boolean;           // pill toggle
+  preferredBenefitType?: "Cash" | "Kind" | "Composite"; // segmented control
 }
 
 export interface EligibilityCriteria {
@@ -50,6 +62,12 @@ export interface EligibilityCriteria {
   occupations?: string[];
   disability_required?: boolean;
   gender_required?: string;
+  // ---- Sprint 6 additions (all optional) ----
+  marital_statuses?: string[];          // accepted statuses; missing/empty = any
+  requires_gov_employee?: boolean;      // true = scheme is for gov employees only
+  requires_minority?: boolean;          // true = minority applicants only
+  requires_dbt?: boolean;               // true = needs Aadhar-linked DBT account
+  benefit_type?: "Cash" | "Kind" | "Composite" | "Any"; // default "Any"
 }
 
 /**
@@ -62,8 +80,6 @@ export const ELIGIBILITY_THRESHOLD = 60;
 /**
  * Codes that are treated as ST sub-groups during category scoring.
  * PVTG = Particularly Vulnerable Tribal Group, DNT = Denotified / Nomadic.
- * If a scheme lists "ST" in its categories array, users in these sub-groups
- * still receive full category points.
  */
 const ST_SUBGROUPS = new Set(["PVTG", "DNT"]);
 
@@ -110,33 +126,24 @@ export function calculateScore(
 
   let score = 0;
 
-  // ================== Income (25 pts) ==================
-  // Heaviest single weight — most common disqualifier in welfare schemes.
-  // Sprint 5 special-case: if the user answered BPL = Yes, automatically
-  // grant the full 25 income-match points to any scheme that either
-  // (a) explicitly requires BPL or (b) has no income ceiling at all. This
-  // mirrors how government schemes treat BPL-card holders as pre-qualified
-  // on the income axis. For schemes that DO have an income ceiling and
-  // don't require BPL, we still apply the standard rule using personal
-  // annualIncome — being BPL doesn't override an explicit income cap.
+  // ================== Income (20 pts) ==================
+  // BPL fast-path: schemes that explicitly require BPL OR have no income
+  // ceiling automatically grant the full income points to BPL households.
   if (form.isBpl && (schemeMeta.requires_bpl || typeof crit.max_income !== "number")) {
-    score += 25;
+    score += 20;
   } else if (typeof crit.max_income === "number") {
-    if (form.annualIncome <= crit.max_income) score += 25;
+    if (form.annualIncome <= crit.max_income) score += 20;
   } else {
-    score += 25; // No income limit → automatic full points.
+    score += 20; // No income limit → automatic full points.
   }
 
-  // ================== Age (15 pts) ==================
+  // ================== Age (10 pts) ==================
   // Both bounds must hold; missing bound = unbounded on that side.
   const minOk = typeof crit.min_age !== "number" || form.age >= crit.min_age;
   const maxOk = typeof crit.max_age !== "number" || form.age <= crit.max_age;
-  if (minOk && maxOk) score += 15;
+  if (minOk && maxOk) score += 10;
 
   // ================== Category (15 pts) ==================
-  // Empty / missing categories list ⇒ "any category". Otherwise the user's
-  // category code must appear in the list, with a special fallback so PVTG
-  // and DNT users qualify whenever a scheme accepts "ST".
   if (!crit.categories || crit.categories.length === 0) {
     score += 15;
   } else if (crit.categories.includes(form.category)) {
@@ -145,30 +152,24 @@ export function calculateScore(
     score += 15; // PVTG / DNT are ST sub-groups — accept ST-only schemes too.
   }
 
-  // ================== Occupation (15 pts) ==================
-  // Empty list = any occupation. Otherwise we accept a case-insensitive
-  // substring match so "Marginal Farmer" still satisfies a "Farmer" rule.
+  // ================== Occupation (10 pts) ==================
   if (!crit.occupations || crit.occupations.length === 0) {
-    score += 15;
+    score += 10;
   } else {
     const occLower = (form.occupation || "").toLowerCase();
     if (crit.occupations.some((o) => occLower.includes(o.toLowerCase()))) {
-      score += 15;
+      score += 10;
     }
   }
 
-  // ================== Disability (10 pts) ==================
-  // If the scheme requires a disability certificate, only disabled users get
-  // the points. Otherwise it's a free 10.
+  // ================== Disability (5 pts) ==================
   if (crit.disability_required) {
-    if (form.disability) score += 10;
+    if (form.disability) score += 5;
   } else {
-    score += 10;
+    score += 5;
   }
 
-  // ================== State (10 pts — NEW) ==================
-  // A scheme is "central" when allowed_states is empty/null → full points
-  // for everybody. Otherwise the user's state must appear in the list.
+  // ================== State (10 pts) ==================
   const allowedStates = schemeMeta.allowed_states ?? [];
   if (!allowedStates || allowedStates.length === 0) {
     score += 10;
@@ -176,34 +177,63 @@ export function calculateScore(
     score += 10;
   }
 
-  // ================== Area type (5 pts — NEW) ==================
-  // "Any" target area always matches. Otherwise the user's selection must
-  // equal the scheme's target_area exactly.
+  // ================== Area type (5 pts) ==================
   const targetArea = (schemeMeta.target_area ?? "Any") as string;
   if (targetArea === "Any" || (form.areaType && targetArea === form.areaType)) {
     score += 5;
   }
 
-  // ================== BPL (5 pts — NEW) ==================
-  // If the scheme is BPL-restricted, only BPL users qualify. Non-BPL schemes
-  // give full points to everyone.
+  // ================== BPL (5 pts) ==================
   if (schemeMeta.requires_bpl) {
     if (form.isBpl) score += 5;
   } else {
     score += 5;
   }
 
+  // ================== Marital status (5 pts — NEW) ==================
+  // Empty / missing list = any status accepted.
+  if (!crit.marital_statuses || crit.marital_statuses.length === 0) {
+    score += 5;
+  } else if (form.maritalStatus && crit.marital_statuses.includes(form.maritalStatus)) {
+    score += 5;
+  }
+
+  // ================== Government employee (5 pts — NEW) ==================
+  // No constraint OR user matches the constraint → full points.
+  if (crit.requires_gov_employee === undefined || crit.requires_gov_employee === null) {
+    score += 5;
+  } else if (crit.requires_gov_employee === !!form.isGovEmployee) {
+    score += 5;
+  }
+
+  // ================== Minority (3 pts — NEW) ==================
+  // No requirement → free points. Otherwise applicant must be a minority.
+  if (!crit.requires_minority) {
+    score += 3;
+  } else if (form.isMinority) {
+    score += 3;
+  }
+
+  // ================== DBT (3 pts — NEW) ==================
+  if (!crit.requires_dbt) {
+    score += 3;
+  } else if (form.isDbtEligible) {
+    score += 3;
+  }
+
+  // ================== Benefit type (4 pts — NEW) ==================
+  // 'Any' (or missing) always matches; otherwise must equal user's preference.
+  const bType = (crit.benefit_type ?? "Any") as string;
+  if (bType === "Any" || !form.preferredBenefitType || bType === form.preferredBenefitType) {
+    score += 4;
+  }
+
   // ================== Gender hard-gate (not weighted) ==================
-  // A gender mismatch disqualifies entirely, so we return 0 regardless of
-  // the points accumulated above.
   if (crit.gender_required && form.gender && crit.gender_required !== form.gender) {
     return 0;
   }
 
   // ================== Distress bonus (Sprint 5, +5 pts, capped at 100) ==================
-  // When the user is BOTH BPL and in extreme distress, give an extra nudge to
-  // the schemes most likely to provide immediate relief: Food Security,
-  // Disability and Health. Cap is enforced by the final clamp below.
   if (form.isBpl && form.isDistressed) {
     const cat = (schemeMeta.category ?? "").toLowerCase();
     if (cat === "food security" || cat === "disability" || cat === "health") {
@@ -222,66 +252,59 @@ export function calculateScore(
  * scheme. Used by the "Other schemes in your preferred field" rail so the
  * user understands why a priority-search hit was demoted.
  *
- * Returns the FIRST failing rule we find, in priority order: state → income
- * → age → category → occupation → disability → area type → BPL → gender.
+ * Returns the FIRST failing rule we find, in priority order:
+ *   state → income → age → category → occupation → disability → area type
+ *   → BPL → marital → gov-employee → minority → DBT → benefit type → gender.
  * Returns null if the user is actually eligible (score ≥ threshold).
  */
 export function explainIneligibility(
   form: UserForm,
   scheme: ScoreableScheme,
 ): string | null {
-  // If the score is high enough, there's nothing to explain.
   if (calculateScore(form, scheme) >= ELIGIBILITY_THRESHOLD) return null;
 
   const crit = scheme.eligibility_criteria ?? {};
 
-  // State first — most binary disqualifier.
   const allowedStates = scheme.allowed_states ?? [];
   if (allowedStates.length > 0 && form.stateOfResidence && !allowedStates.includes(form.stateOfResidence)) {
     return "State not eligible";
   }
-
-  // Income exceeds the scheme's cap.
   if (typeof crit.max_income === "number" && form.annualIncome > crit.max_income) {
     return "Income exceeds limit";
   }
-
-  // Age outside [min_age, max_age].
   if (typeof crit.min_age === "number" && form.age < crit.min_age) return "Below minimum age";
   if (typeof crit.max_age === "number" && form.age > crit.max_age) return "Above maximum age";
-
-  // Category not accepted (with the PVTG/DNT → ST fallback).
   if (crit.categories && crit.categories.length > 0) {
     const catOk =
       crit.categories.includes(form.category) ||
       (ST_SUBGROUPS.has(form.category) && crit.categories.includes("ST"));
     if (!catOk) return "Category not eligible";
   }
-
-  // Occupation mismatch.
   if (crit.occupations && crit.occupations.length > 0) {
     const occLower = (form.occupation || "").toLowerCase();
     const ok = crit.occupations.some((o) => occLower.includes(o.toLowerCase()));
     if (!ok) return "Occupation requirement not met";
   }
-
-  // Disability required but user is not disabled.
   if (crit.disability_required && !form.disability) return "Disability certificate required";
-
-  // Area type mismatch (Urban vs Rural).
   const targetArea = (scheme.target_area ?? "Any") as string;
   if (targetArea !== "Any" && form.areaType && targetArea !== form.areaType) {
     return `Available only for ${targetArea} areas`;
   }
-
-  // BPL-only scheme but user is not BPL.
   if (scheme.requires_bpl && !form.isBpl) return "BPL households only";
-
-  // Gender hard-gate.
+  if (crit.marital_statuses && crit.marital_statuses.length > 0 && form.maritalStatus
+      && !crit.marital_statuses.includes(form.maritalStatus)) {
+    return "Marital status not eligible";
+  }
+  if (crit.requires_gov_employee === true && !form.isGovEmployee) return "Government employees only";
+  if (crit.requires_gov_employee === false && form.isGovEmployee) return "Not for government employees";
+  if (crit.requires_minority && !form.isMinority) return "Minority applicants only";
+  if (crit.requires_dbt && !form.isDbtEligible) return "Requires DBT-linked account";
+  const bType = (crit.benefit_type ?? "Any") as string;
+  if (bType !== "Any" && form.preferredBenefitType && bType !== form.preferredBenefitType) {
+    return `Benefit type is ${bType}, not your preference`;
+  }
   if (crit.gender_required && form.gender && crit.gender_required !== form.gender) {
     return `Available only for ${crit.gender_required} applicants`;
   }
-
-  // Generic fallback if nothing specific surfaced.
   return "Eligibility criteria not fully met";
 }
