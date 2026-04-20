@@ -39,9 +39,28 @@ interface AppRow {
 export default function Status() {
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { isActive, loading: subLoading } = useSubscription();
+  const { isActive: hasPlus, loading: subLoading } = useSubscription();
 
-  // Only fire the query for premium users — saves a round-trip otherwise.
+  // Also count an active Saathi Pack as paid access — we promised "any active
+  // paid plan unlocks Status visibility", not just Plus.
+  const { data: hasPack = false, isLoading: packLoading } = useQuery({
+    queryKey: ["hasActivePack", user?.id],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("scheme_packs")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user!.id)
+        .eq("is_active", true)
+        .gt("expires_at", new Date().toISOString());
+      if (error) throw error;
+      return (count ?? 0) > 0;
+    },
+    enabled: !!user,
+  });
+
+  const hasAnyPlan = hasPlus || hasPack;
+
+  // Only fire the applications query for users with at least one paid plan.
   const { data: apps = [], isLoading } = useQuery({
     queryKey: ["applications", user?.id],
     queryFn: async () => {
@@ -53,25 +72,25 @@ export default function Status() {
       if (error) throw error;
       return data as unknown as AppRow[];
     },
-    enabled: !!user && isActive,
+    enabled: !!user && hasAnyPlan,
   });
 
   // Premium gate — show upgrade prompt instead of the application list.
-  if (!subLoading && !isActive) {
+  if (!subLoading && !packLoading && !hasAnyPlan) {
     return (
       <div className="container py-10 animate-fade-in">
         <Card className="mx-auto max-w-xl shadow-elegant">
           <CardContent className="space-y-4 p-8 text-center">
             <Lock className="mx-auto h-10 w-10 text-primary" />
-            <h2 className="text-2xl font-bold text-primary">Premium feature</h2>
+            <h2 className="text-2xl font-bold text-primary">Paid plan required</h2>
             <p className="text-sm text-muted-foreground">
               Application tracking and your booked consultation calls are part of
-              WelfareConnect Premium. Subscribe to keep an eye on every
-              application from one place.
+              the Saathi Pack and Saathi Plus plans. Pick a plan to keep an eye
+              on every application from one place.
             </p>
             <Button asChild size="lg" className="font-semibold">
               <Link to="/subscription">
-                <Sparkles className="mr-2 h-4 w-4" /> See Premium plans
+                <Sparkles className="mr-2 h-4 w-4" /> View plans
               </Link>
             </Button>
           </CardContent>
@@ -87,7 +106,7 @@ export default function Status() {
         <p className="mt-2 text-muted-foreground">{t("status.subtitle")}</p>
       </header>
 
-      {(isLoading || subLoading) && <p className="text-muted-foreground">{t("common.loading")}</p>}
+      {(isLoading || subLoading || packLoading) && <p className="text-muted-foreground">{t("common.loading")}</p>}
       {!isLoading && apps.length === 0 && (
         <Card className="shadow-elegant">
           <CardContent className="p-10 text-center text-muted-foreground">
