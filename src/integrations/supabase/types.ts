@@ -69,6 +69,7 @@ export type Database = {
           scheme_id: string | null
           status: string
           user_id: string
+          visit_requested: boolean | null
         }
         Insert: {
           aadhar?: string | null
@@ -82,6 +83,7 @@ export type Database = {
           scheme_id?: string | null
           status?: string
           user_id: string
+          visit_requested?: boolean | null
         }
         Update: {
           aadhar?: string | null
@@ -95,6 +97,7 @@ export type Database = {
           scheme_id?: string | null
           status?: string
           user_id?: string
+          visit_requested?: boolean | null
         }
         Relationships: [
           {
@@ -317,6 +320,62 @@ export type Database = {
           },
         ]
       }
+      scheme_packs: {
+        Row: {
+          amount_paid: number | null
+          calls_total: number | null
+          calls_used: number | null
+          concession_applied: boolean | null
+          expires_at: string
+          id: string
+          is_active: boolean | null
+          payment_reference: string | null
+          purchased_at: string
+          scheme_id: string
+          user_id: string
+          visits_total: number | null
+          visits_used: number | null
+        }
+        Insert: {
+          amount_paid?: number | null
+          calls_total?: number | null
+          calls_used?: number | null
+          concession_applied?: boolean | null
+          expires_at: string
+          id?: string
+          is_active?: boolean | null
+          payment_reference?: string | null
+          purchased_at?: string
+          scheme_id: string
+          user_id: string
+          visits_total?: number | null
+          visits_used?: number | null
+        }
+        Update: {
+          amount_paid?: number | null
+          calls_total?: number | null
+          calls_used?: number | null
+          concession_applied?: boolean | null
+          expires_at?: string
+          id?: string
+          is_active?: boolean | null
+          payment_reference?: string | null
+          purchased_at?: string
+          scheme_id?: string
+          user_id?: string
+          visits_total?: number | null
+          visits_used?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheme_packs_scheme_id_fkey"
+            columns: ["scheme_id"]
+            isOneToOne: false
+            referencedRelation: "schemes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schemes: {
         Row: {
           allowed_states: string[]
@@ -370,6 +429,10 @@ export type Database = {
       }
       subscriptions: {
         Row: {
+          amount_paid: number | null
+          calls_total: number | null
+          calls_used: number | null
+          concession_applied: boolean | null
           created_at: string
           expires_at: string
           id: string
@@ -377,11 +440,18 @@ export type Database = {
           payment_method: string | null
           payment_reference: string | null
           plan: string
+          plan_type: string | null
           started_at: string
           updated_at: string
           user_id: string
+          visits_total: number | null
+          visits_used: number | null
         }
         Insert: {
+          amount_paid?: number | null
+          calls_total?: number | null
+          calls_used?: number | null
+          concession_applied?: boolean | null
           created_at?: string
           expires_at: string
           id?: string
@@ -389,11 +459,18 @@ export type Database = {
           payment_method?: string | null
           payment_reference?: string | null
           plan?: string
+          plan_type?: string | null
           started_at?: string
           updated_at?: string
           user_id: string
+          visits_total?: number | null
+          visits_used?: number | null
         }
         Update: {
+          amount_paid?: number | null
+          calls_total?: number | null
+          calls_used?: number | null
+          concession_applied?: boolean | null
           created_at?: string
           expires_at?: string
           id?: string
@@ -401,14 +478,80 @@ export type Database = {
           payment_method?: string | null
           payment_reference?: string | null
           plan?: string
+          plan_type?: string | null
           started_at?: string
           updated_at?: string
           user_id?: string
+          visits_total?: number | null
+          visits_used?: number | null
         }
         Relationships: []
       }
+      topup_purchases: {
+        Row: {
+          amount_paid: number | null
+          applies_to: string | null
+          id: string
+          payment_reference: string | null
+          purchased_at: string
+          scheme_pack_id: string | null
+          subscription_id: string | null
+          topup_type: string
+          units_added: number | null
+          user_id: string
+        }
+        Insert: {
+          amount_paid?: number | null
+          applies_to?: string | null
+          id?: string
+          payment_reference?: string | null
+          purchased_at?: string
+          scheme_pack_id?: string | null
+          subscription_id?: string | null
+          topup_type: string
+          units_added?: number | null
+          user_id: string
+        }
+        Update: {
+          amount_paid?: number | null
+          applies_to?: string | null
+          id?: string
+          payment_reference?: string | null
+          purchased_at?: string
+          scheme_pack_id?: string | null
+          subscription_id?: string | null
+          topup_type?: string
+          units_added?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topup_purchases_scheme_pack_id_fkey"
+            columns: ["scheme_pack_id"]
+            isOneToOne: false
+            referencedRelation: "scheme_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topup_purchases_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
+      revenue_summary: {
+        Row: {
+          day: string | null
+          gross_revenue: number | null
+          source: string | null
+          units: number | null
+        }
+        Relationships: []
+      }
       upcoming_consultations: {
         Row: {
           aadhar: string | null
