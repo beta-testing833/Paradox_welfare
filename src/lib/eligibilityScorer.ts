@@ -77,6 +77,7 @@ export interface ScoreableScheme {
   allowed_states?: string[] | null;     // empty / null = central scheme
   target_area?: "Any" | "Urban" | "Rural" | string | null;
   requires_bpl?: boolean | null;
+  category?: string | null;             // used for the BPL+distress bonus
 }
 
 /**
