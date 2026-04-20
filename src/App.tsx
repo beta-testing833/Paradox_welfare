@@ -30,6 +30,7 @@ import Eligibility from "@/pages/Eligibility";
 import Schemes from "@/pages/Schemes";
 import SchemeDetail from "@/pages/SchemeDetail";
 import Status from "@/pages/Status";
+import StatusDetail from "@/pages/StatusDetail";
 import Notifications from "@/pages/Notifications";
 import Profile from "@/pages/Profile";
 import Dashboard from "@/pages/Dashboard";
@@ -68,6 +69,7 @@ const App = () => (
 
                   {/* Protected routes — require login */}
                   <Route path="/status"        element={<ProtectedRoute><Status /></ProtectedRoute>} />
+                  <Route path="/status/:applicationId" element={<ProtectedRoute><StatusDetail /></ProtectedRoute>} />
                   <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
                   <Route path="/profile"       element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                   <Route path="/dashboard"     element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
