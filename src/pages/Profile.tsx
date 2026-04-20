@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Loader2, KeyRound, LayoutDashboard, User as UserIcon, ArrowRight } from "lucide-react";
+import MyPlans from "@/components/MyPlans";
 
 const AADHAR_REGEX = /^[0-9]{12}$/;
 
@@ -150,6 +151,9 @@ export default function Profile() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* ---------- My Plans ---------- */}
+        <MyPlans />
 
         {/* ---------- Dashboard ---------- */}
         <Card className="shadow-elegant bg-gradient-card">
