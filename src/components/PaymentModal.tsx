@@ -220,19 +220,35 @@ export default function PaymentModal({
 
         // 2. Bump the parent plan's quota by reading current value then +1.
         //    (We can't use an SQL increment via the JS client without an RPC.)
-        const targetTable = topupAppliesTo === "saathi_plus_annual" ? "subscriptions" : "scheme_packs";
-        const { data: cur, error: readErr } = await supabase
-          .from(targetTable)
-          .select(`${insertCol}`)
-          .eq("id", topupTargetId!)
-          .single();
-        if (readErr) throw readErr;
-        const currentVal = (cur as Record<string, number>)[insertCol] ?? 0;
-        const { error: upErr } = await supabase
-          .from(targetTable)
-          .update({ [insertCol]: currentVal + 1 })
-          .eq("id", topupTargetId!);
-        if (upErr) throw upErr;
+        if (topupAppliesTo === "saathi_plus_annual") {
+          const { data: cur, error: readErr } = await supabase
+            .from("subscriptions")
+            .select("calls_total, visits_total")
+            .eq("id", topupTargetId!)
+            .single();
+          if (readErr) throw readErr;
+          const patch = isCall
+            ? { calls_total: (cur?.calls_total ?? 0) + 1 }
+            : { visits_total: (cur?.visits_total ?? 0) + 1 };
+          const { error: upErr } = await supabase
+            .from("subscriptions").update(patch).eq("id", topupTargetId!);
+          if (upErr) throw upErr;
+        } else {
+          const { data: cur, error: readErr } = await supabase
+            .from("scheme_packs")
+            .select("calls_total, visits_total")
+            .eq("id", topupTargetId!)
+            .single();
+          if (readErr) throw readErr;
+          const patch = isCall
+            ? { calls_total: (cur?.calls_total ?? 0) + 1 }
+            : { visits_total: (cur?.visits_total ?? 0) + 1 };
+          const { error: upErr } = await supabase
+            .from("scheme_packs").update(patch).eq("id", topupTargetId!);
+          if (upErr) throw upErr;
+        }
+        // Eliminate the unused-var warning on insertCol when in this branch.
+        void insertCol;
 
         await supabase.from("notifications").insert({
           user_id: user.id,
