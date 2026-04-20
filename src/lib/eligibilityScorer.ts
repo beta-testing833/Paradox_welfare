@@ -34,6 +34,11 @@ export interface UserForm {
   stateOfResidence?: string; // e.g. "West Bengal"
   areaType?: "Urban" | "Rural" | ""; // empty = not yet answered
   isBpl?: boolean;
+  // ---- Sprint 5 BPL-conditional additions ----
+  isDistressed?: boolean;            // only meaningful when isBpl === true
+  familyAnnualIncome?: number | null; // only when isBpl === false
+  guardianAnnualIncome?: number | null; // only when isBpl === false
+  guardianNotApplicable?: boolean;   // pairs with guardianAnnualIncome
   prioritySearch?: string;   // free-text, used by the page (not by scorer)
 }
 
