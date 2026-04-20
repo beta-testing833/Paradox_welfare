@@ -14,7 +14,251 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      application_documents: {
+        Row: {
+          application_id: string
+          file_name: string
+          file_path: string
+          file_size_bytes: number
+          id: string
+          uploaded_at: string
+        }
+        Insert: {
+          application_id: string
+          file_name: string
+          file_path: string
+          file_size_bytes: number
+          id?: string
+          uploaded_at?: string
+        }
+        Update: {
+          application_id?: string
+          file_name?: string
+          file_path?: string
+          file_size_bytes?: number
+          id?: string
+          uploaded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_documents_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      applications: {
+        Row: {
+          aadhar: string | null
+          applied_at: string
+          id: string
+          message: string | null
+          ngo_id: string | null
+          scheme_id: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          aadhar?: string | null
+          applied_at?: string
+          id?: string
+          message?: string | null
+          ngo_id?: string | null
+          scheme_id?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          aadhar?: string | null
+          applied_at?: string
+          id?: string
+          message?: string | null
+          ngo_id?: string | null
+          scheme_id?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "applications_ngo_id_fkey"
+            columns: ["ngo_id"]
+            isOneToOne: false
+            referencedRelation: "ngos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_scheme_id_fkey"
+            columns: ["scheme_id"]
+            isOneToOne: false
+            referencedRelation: "schemes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ngos: {
+        Row: {
+          created_at: string
+          focus_area: string | null
+          id: string
+          km_from_user: number | null
+          location: string | null
+          name: string
+          rating: number | null
+          testimonial: string | null
+          testimonial_author: string | null
+        }
+        Insert: {
+          created_at?: string
+          focus_area?: string | null
+          id?: string
+          km_from_user?: number | null
+          location?: string | null
+          name: string
+          rating?: number | null
+          testimonial?: string | null
+          testimonial_author?: string | null
+        }
+        Update: {
+          created_at?: string
+          focus_area?: string | null
+          id?: string
+          km_from_user?: number | null
+          location?: string | null
+          name?: string
+          rating?: number | null
+          testimonial?: string | null
+          testimonial_author?: string | null
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          is_read: boolean
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          aadhar: string | null
+          created_at: string
+          dob: string | null
+          full_name: string | null
+          id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          aadhar?: string | null
+          created_at?: string
+          dob?: string | null
+          full_name?: string | null
+          id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          aadhar?: string | null
+          created_at?: string
+          dob?: string | null
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      scheme_ngo_map: {
+        Row: {
+          ngo_id: string
+          scheme_id: string
+        }
+        Insert: {
+          ngo_id: string
+          scheme_id: string
+        }
+        Update: {
+          ngo_id?: string
+          scheme_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheme_ngo_map_ngo_id_fkey"
+            columns: ["ngo_id"]
+            isOneToOne: false
+            referencedRelation: "ngos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheme_ngo_map_scheme_id_fkey"
+            columns: ["scheme_id"]
+            isOneToOne: false
+            referencedRelation: "schemes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schemes: {
+        Row: {
+          benefit_amount: string | null
+          category: string | null
+          created_at: string
+          description: string | null
+          eligibility_criteria: Json
+          id: string
+          is_verified: boolean
+          name: string
+          official_portal_url: string | null
+          required_documents: string[]
+        }
+        Insert: {
+          benefit_amount?: string | null
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          eligibility_criteria?: Json
+          id?: string
+          is_verified?: boolean
+          name: string
+          official_portal_url?: string | null
+          required_documents?: string[]
+        }
+        Update: {
+          benefit_amount?: string | null
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          eligibility_criteria?: Json
+          id?: string
+          is_verified?: boolean
+          name?: string
+          official_portal_url?: string | null
+          required_documents?: string[]
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
