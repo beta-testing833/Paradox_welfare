@@ -112,7 +112,16 @@ export function calculateScore(
 
   // ================== Income (25 pts) ==================
   // Heaviest single weight — most common disqualifier in welfare schemes.
-  if (typeof crit.max_income === "number") {
+  // Sprint 5 special-case: if the user answered BPL = Yes, automatically
+  // grant the full 25 income-match points to any scheme that either
+  // (a) explicitly requires BPL or (b) has no income ceiling at all. This
+  // mirrors how government schemes treat BPL-card holders as pre-qualified
+  // on the income axis. For schemes that DO have an income ceiling and
+  // don't require BPL, we still apply the standard rule using personal
+  // annualIncome — being BPL doesn't override an explicit income cap.
+  if (form.isBpl && (schemeMeta.requires_bpl || typeof crit.max_income !== "number")) {
+    score += 25;
+  } else if (typeof crit.max_income === "number") {
     if (form.annualIncome <= crit.max_income) score += 25;
   } else {
     score += 25; // No income limit → automatic full points.
