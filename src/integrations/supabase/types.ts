@@ -222,6 +222,7 @@ export type Database = {
       }
       schemes: {
         Row: {
+          allowed_states: string[]
           benefit_amount: string | null
           category: string | null
           created_at: string
@@ -232,8 +233,12 @@ export type Database = {
           name: string
           official_portal_url: string | null
           required_documents: string[]
+          requires_bpl: boolean
+          subcategory: string | null
+          target_area: string
         }
         Insert: {
+          allowed_states?: string[]
           benefit_amount?: string | null
           category?: string | null
           created_at?: string
@@ -244,8 +249,12 @@ export type Database = {
           name: string
           official_portal_url?: string | null
           required_documents?: string[]
+          requires_bpl?: boolean
+          subcategory?: string | null
+          target_area?: string
         }
         Update: {
+          allowed_states?: string[]
           benefit_amount?: string | null
           category?: string | null
           created_at?: string
@@ -256,6 +265,9 @@ export type Database = {
           name?: string
           official_portal_url?: string | null
           required_documents?: string[]
+          requires_bpl?: boolean
+          subcategory?: string | null
+          target_area?: string
         }
         Relationships: []
       }
