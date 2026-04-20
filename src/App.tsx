@@ -30,6 +30,7 @@ import Notifications from "@/pages/Notifications";
 import Profile from "@/pages/Profile";
 import Dashboard from "@/pages/Dashboard";
 import Auth from "@/pages/Auth";
+import AuthCallback from "@/pages/AuthCallback";
 import ResetPassword from "@/pages/ResetPassword";
 import NotFound from "@/pages/NotFound";
 
@@ -52,6 +53,7 @@ const App = () => (
                   <Route path="/schemes" element={<Schemes />} />
                   <Route path="/schemes/:schemeId/ngos" element={<NgoPartners />} />
                   <Route path="/auth" element={<Auth />} />
+                  <Route path="/auth/callback" element={<AuthCallback />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
 
                   {/* Protected routes — require login */}
