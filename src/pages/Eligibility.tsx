@@ -3,22 +3,25 @@
  * ----------------------------------------------------------------------------
  * Route: /eligibility
  *
- * Sprint 4 update — adds 6 new capabilities while preserving the existing
- * navy + white visual language:
- *   1. State of Residence dropdown (required)
- *   2. Urban / Rural pill toggle      (required)
- *   3. Expanded Category list including PVTG and DNT (required)
- *   4. Below Poverty Line Yes/No toggle (required)
- *   5. Results-filter pill inside the "Your Matches" header
- *   6. "Looking for something specific?" optional priority-search field
- *      → boosts matching schemes to the top AND surfaces ineligible schemes
- *        in a dedicated "Other schemes in your preferred field" rail.
+ * Sprint 5 changes (on top of Sprint 4):
+ *   1. BPL Yes/No now drives conditional rendering:
+ *        - BPL = Yes  → reveal "Destitute / Penury / Distress" Yes/No
+ *        - BPL = No   → reveal Annual Family Income + Parent/Guardian Income
+ *          (with auto "Not Applicable" if age < 18)
+ *   2. "Looking for something specific?" is now a HARD FILTER. When non-empty
+ *      the right panel only shows schemes whose category/name/description
+ *      contains the term, sorted by score desc, and the "Filter results by"
+ *      dropdown is hidden.
+ *   3. "Filter results by" no longer shows a red asterisk.
+ *   4. Inline required-field validation on submit ("Needs to be filled in").
+ *   5. Each match card is clickable → navigates to /schemes/:id.
+ *   6. "Browse all schemes" section is always visible on the right panel.
  *
- * Form state is persisted to sessionStorage so the user can revisit the page
- * without retyping. All scheme data is fetched live from Supabase via
- * react-query — no localStorage caching of server data.
+ * Logged-in submissions persist to public.eligibility_submissions; guests
+ * keep their data only in React state (sessionStorage is used purely as a
+ * convenience cache so refreshing doesn't wipe in-progress typing).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,15 +36,16 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/hooks/use-toast";
 import {
   calculateScore,
-  explainIneligibility,
   ELIGIBILITY_THRESHOLD,
   type UserForm,
   type ScoreableScheme,
 } from "@/lib/eligibilityScorer";
 import { INDIAN_STATES_AND_UTS } from "@/lib/indianStates";
-import { BadgeCheck, Sparkles, ArrowRight, Search } from "lucide-react";
+import { BadgeCheck, Sparkles, ArrowRight, Search, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** sessionStorage key for the persisted form. */
@@ -89,8 +93,22 @@ interface SchemeRow extends ScoreableScheme {
   is_verified: boolean;
 }
 
+/** Names of the keys we validate on submit. Drives both UI errors and scroll. */
+type RequiredKey =
+  | "name"
+  | "age"
+  | "stateOfResidence"
+  | "areaType"
+  | "annualIncome"
+  | "category"
+  | "isBpl"
+  | "isDistressed"
+  | "familyAnnualIncome"
+  | "guardianAnnualIncome";
+
 export default function Eligibility() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   // ---- Hydrate the form from sessionStorage so the user can return without retyping. ----
@@ -106,15 +124,56 @@ export default function Eligibility() {
   }, [form]);
 
   // Tracks whether the user has clicked "Find Schemes" at least once.
-  // The results filter only renders after the first submission, per spec.
   const [hasSubmitted, setHasSubmitted] = useState(false);
 
   // Active value of the "Filter results by" dropdown in the Matches panel.
   const [filterCategory, setFilterCategory] =
     useState<typeof FILTER_OPTIONS[number]>("All Categories");
 
+  // Map of validation errors by required-field key. Empty = form is valid.
+  const [errors, setErrors] = useState<Partial<Record<RequiredKey, string>>>({});
+
+  // Refs to required field containers — used to scroll the first error into view.
+  const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // ---- Sprint 5 Change #1: auto-toggle Guardian "Not Applicable" by age. ----
+  // When age < 18 → force guardianNotApplicable = true and clear the income.
+  // When age >= 18 → if it was previously auto-set, undo it. We use a ref to
+  // remember whether the flag was set by the auto rule (so we don't trample
+  // a manual user override the next time they change their age).
+  const autoSetByAgeRef = useRef(false);
+  useEffect(() => {
+    if (!form.age || form.age <= 0) return; // ignore the empty initial state
+    if (form.age < 18 && !form.guardianNotApplicable) {
+      autoSetByAgeRef.current = true;
+      setForm((f) => ({ ...f, guardianNotApplicable: true, guardianAnnualIncome: null }));
+    } else if (form.age >= 18 && form.guardianNotApplicable && autoSetByAgeRef.current) {
+      autoSetByAgeRef.current = false;
+      setForm((f) => ({ ...f, guardianNotApplicable: false }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.age]);
+
+  // ---- Sprint 5 Change #1: when BPL flips, clear the now-irrelevant fields ----
+  function setBpl(v: boolean) {
+    clearError("isBpl");
+    setForm((f) => {
+      if (v) {
+        // Switched to YES → wipe the No-side fields so stale values don't leak.
+        return {
+          ...f,
+          isBpl: true,
+          familyAnnualIncome: null,
+          guardianAnnualIncome: null,
+          guardianNotApplicable: false,
+        };
+      }
+      // Switched to NO → wipe the Yes-side field.
+      return { ...f, isBpl: false, isDistressed: undefined };
+    });
+  }
+
   // ---- Live Supabase query: load every scheme once, score them client-side. ----
-  // We select the four new Sprint-4 columns explicitly so the scorer has them.
   const { data: schemes = [], isLoading } = useQuery({
     queryKey: ["schemes", "eligibility"],
     queryFn: async () => {
@@ -141,73 +200,146 @@ export default function Eligibility() {
   }, [schemes, form]);
 
   /**
-   * Build the visible match list:
-   *   1. Apply the category filter if not "All Categories".
-   *   2. Keep only eligible schemes (score ≥ threshold).
-   *   3. If a priority search is set, push schemes matching the term to the
-   *      top regardless of score order. Within each rail (priority hits vs
-   *      everything else), sort by score descending.
+   * Build the visible match list.
+   *
+   * Sprint 5 Change #2 — when prioritySearch is non-empty it becomes a HARD
+   * FILTER: only schemes that match the term by category/name/description
+   * appear, sorted by score desc (including score 0). The category filter
+   * dropdown is hidden in this mode and is bypassed here defensively.
    */
   const visibleMatches = useMemo(() => {
     const term = (form.prioritySearch ?? "").trim().toLowerCase();
 
-    // Step 1: client-side category filter (no extra Supabase round-trip).
-    let list = scoredAll;
-    if (filterCategory !== "All Categories") {
-      list = list.filter((s) => (s.category ?? "") === filterCategory);
-    }
-
-    // Step 2: only eligible schemes appear in the primary list.
-    list = list.filter((s) => s.score >= ELIGIBILITY_THRESHOLD);
-
-    // Step 3: priority boost.
     if (term) {
+      // HARD FILTER MODE — restrict to category/name/desc matches.
       const matchesTerm = (s: SchemeRow) =>
         (s.category ?? "").toLowerCase().includes(term) ||
         (s.name ?? "").toLowerCase().includes(term) ||
         (s.description ?? "").toLowerCase().includes(term);
-
-      const priority = list.filter(matchesTerm).sort((a, b) => b.score - a.score);
-      const rest = list.filter((s) => !matchesTerm(s)).sort((a, b) => b.score - a.score);
-      return [...priority, ...rest];
+      return scoredAll.filter(matchesTerm).sort((a, b) => b.score - a.score);
     }
 
-    // No priority term → just sort by score descending.
+    // NORMAL RANKING MODE — apply the category dropdown then threshold.
+    let list = scoredAll;
+    if (filterCategory !== "All Categories") {
+      list = list.filter((s) => (s.category ?? "") === filterCategory);
+    }
+    list = list.filter((s) => s.score >= ELIGIBILITY_THRESHOLD);
     return [...list].sort((a, b) => b.score - a.score);
   }, [scoredAll, filterCategory, form.prioritySearch]);
 
-  /**
-   * "Other schemes in the {term} field you are not currently eligible for."
-   * Only computed when prioritySearch is non-empty; lists schemes that match
-   * the term by category/name/description but failed the score threshold.
-   */
-  const ineligiblePriorityMatches = useMemo(() => {
-    const term = (form.prioritySearch ?? "").trim().toLowerCase();
-    if (!term) return [];
-    return scoredAll
-      .filter((s) => s.score < ELIGIBILITY_THRESHOLD)
-      .filter(
-        (s) =>
-          (s.category ?? "").toLowerCase().includes(term) ||
-          (s.name ?? "").toLowerCase().includes(term) ||
-          (s.description ?? "").toLowerCase().includes(term),
-      )
-      .map((s) => ({ ...s, reason: explainIneligibility(form, s) ?? "Not eligible" }));
-  }, [scoredAll, form]);
+  // -------- Validation helpers --------
 
   /**
-   * Submit handler. We DO NOT navigate away — the matches panel on the right
-   * already shows live results. We simply flip `hasSubmitted` so the filter
-   * pill reveals itself, and scroll the matches into view on small screens.
+   * Validate the form. Returns the first invalid field key (so we can scroll
+   * to it) and populates the `errors` state with every missing field.
    */
-  function handleSubmit(e: React.FormEvent) {
+  function validate(): RequiredKey | null {
+    const next: Partial<Record<RequiredKey, string>> = {};
+    const MISSING = "Needs to be filled in";
+
+    if (!form.name?.trim()) next.name = MISSING;
+    if (!form.age || form.age <= 0) next.age = MISSING;
+    if (!form.stateOfResidence) next.stateOfResidence = MISSING;
+    if (!form.areaType) next.areaType = MISSING;
+    if (!form.annualIncome && form.annualIncome !== 0) next.annualIncome = MISSING;
+    // annualIncome can legitimately be 0; only undefined/empty triggers error
+    if (form.annualIncome === undefined || form.annualIncome === null || Number.isNaN(form.annualIncome)) {
+      next.annualIncome = MISSING;
+    }
+    if (!form.category) next.category = MISSING;
+    if (form.isBpl === undefined) next.isBpl = MISSING;
+
+    // Conditional required fields driven by BPL answer
+    if (form.isBpl === true && form.isDistressed === undefined) {
+      next.isDistressed = MISSING;
+    }
+    if (form.isBpl === false) {
+      if (form.familyAnnualIncome === undefined || form.familyAnnualIncome === null || Number.isNaN(form.familyAnnualIncome as number)) {
+        next.familyAnnualIncome = MISSING;
+      }
+      // Guardian: either an income value OR Not Applicable selected.
+      const hasGuardianValue =
+        form.guardianAnnualIncome !== undefined &&
+        form.guardianAnnualIncome !== null &&
+        !Number.isNaN(form.guardianAnnualIncome as number);
+      if (!hasGuardianValue && !form.guardianNotApplicable) {
+        next.guardianAnnualIncome = MISSING;
+      }
+    }
+
+    setErrors(next);
+    // Return the first key in the order they're listed above (object insertion order).
+    const first = Object.keys(next)[0] as RequiredKey | undefined;
+    return first ?? null;
+  }
+
+  /** Clear the error for a single field — called from each onChange. */
+  function clearError(key: RequiredKey) {
+    setErrors((prev) => {
+      if (!prev[key]) return prev;
+      const { [key]: _omit, ...rest } = prev;
+      return rest;
+    });
+  }
+
+  /**
+   * Persist the submission to Supabase for logged-in users.
+   * Wrapped in try/catch with a toast — never blocks the UX.
+   */
+  async function persistSubmission() {
+    if (!user) return; // guests stay client-side per spec
+    try {
+      const { error } = await supabase.from("eligibility_submissions").insert({
+        user_id: user.id,
+        full_name: form.name ?? null,
+        age: form.age || null,
+        gender: form.gender || null,
+        state_of_residence: form.stateOfResidence || null,
+        area_type: form.areaType || null,
+        category: form.category || null,
+        occupation: form.occupation || null,
+        disability: !!form.disability,
+        annual_income: form.annualIncome ?? null,
+        is_bpl: form.isBpl ?? null,
+        is_distressed: form.isDistressed ?? null,
+        family_annual_income: form.familyAnnualIncome ?? null,
+        guardian_annual_income: form.guardianAnnualIncome ?? null,
+        guardian_not_applicable: !!form.guardianNotApplicable,
+        priority_search: form.prioritySearch?.trim() || null,
+      });
+      if (error) throw error;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not save submission";
+      toast({ title: "Saved locally only", description: msg, variant: "destructive" });
+    }
+  }
+
+  /**
+   * Submit handler. Runs validation, scrolls to the first error if any,
+   * otherwise reveals the matches panel and persists the row.
+   */
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const firstBad = validate();
+    if (firstBad) {
+      // Scroll the first invalid field into view, smoothly.
+      const node = fieldRefs.current[firstBad];
+      if (node && typeof node.scrollIntoView === "function") {
+        node.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return;
+    }
     setHasSubmitted(true);
-    // On mobile, jump down to the matches panel so the user sees the result.
+    await persistSubmission();
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       document.getElementById("matches-panel")?.scrollIntoView({ behavior: "smooth" });
     }
   }
+
+  // True when the priority search is acting as a hard filter — we use this
+  // to hide the "Filter results by" dropdown per spec change #2.
+  const priorityActive = !!(form.prioritySearch ?? "").trim();
 
   return (
     <div className="container py-10 animate-fade-in">
@@ -227,26 +359,48 @@ export default function Eligibility() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            <form onSubmit={handleSubmit} className="grid gap-5 sm:grid-cols-2">
-              {/* Full Name (existing) */}
-              <Field label={t("elig.name")} id="name">
-                <Input id="name" required value={form.name ?? ""}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <form onSubmit={handleSubmit} className="grid gap-5 sm:grid-cols-2" noValidate>
+              {/* Full Name (required) */}
+              <Field
+                label={t("elig.name")} id="name" required
+                error={errors.name}
+                refCb={(el) => (fieldRefs.current.name = el)}
+              >
+                <Input
+                  id="name"
+                  value={form.name ?? ""}
+                  className={cn(errors.name && "border-destructive")}
+                  onChange={(e) => { clearError("name"); setForm({ ...form, name: e.target.value }); }}
+                />
               </Field>
 
-              {/* Age (existing) — required */}
-              <Field label={t("elig.age")} id="age" required>
-                <Input id="age" type="number" min={0} max={120} required value={form.age || ""}
-                  onChange={(e) => setForm({ ...form, age: Number(e.target.value) })} />
+              {/* Age (required) */}
+              <Field
+                label={t("elig.age")} id="age" required
+                error={errors.age}
+                refCb={(el) => (fieldRefs.current.age = el)}
+              >
+                <Input
+                  id="age" type="number" min={0} max={120}
+                  value={form.age || ""}
+                  className={cn(errors.age && "border-destructive")}
+                  onChange={(e) => { clearError("age"); setForm({ ...form, age: Number(e.target.value) }); }}
+                />
               </Field>
 
-              {/* NEW #1 — State of Residence (required) */}
-              <Field label="State of Residence" id="state" required>
+              {/* State of Residence (required) */}
+              <Field
+                label="State of Residence" id="state" required
+                error={errors.stateOfResidence}
+                refCb={(el) => (fieldRefs.current.stateOfResidence = el)}
+              >
                 <Select
                   value={form.stateOfResidence ?? ""}
-                  onValueChange={(v) => setForm({ ...form, stateOfResidence: v })}
+                  onValueChange={(v) => { clearError("stateOfResidence"); setForm({ ...form, stateOfResidence: v }); }}
                 >
-                  <SelectTrigger id="state"><SelectValue placeholder="Select state / UT" /></SelectTrigger>
+                  <SelectTrigger id="state" className={cn(errors.stateOfResidence && "border-destructive")}>
+                    <SelectValue placeholder="Select state / UT" />
+                  </SelectTrigger>
                   <SelectContent className="max-h-72">
                     {INDIAN_STATES_AND_UTS.map((st) => (
                       <SelectItem key={st} value={st}>{st}</SelectItem>
@@ -255,16 +409,21 @@ export default function Eligibility() {
                 </Select>
               </Field>
 
-              {/* NEW #2 — Area Type (Urban / Rural) pill toggle, required */}
-              <Field label="Area Type" id="area" required>
+              {/* Area Type (Urban / Rural) — required */}
+              <Field
+                label="Area Type" id="area" required
+                error={errors.areaType}
+                refCb={(el) => (fieldRefs.current.areaType = el)}
+              >
                 <PillToggle
                   value={form.areaType ?? ""}
                   options={["Urban", "Rural"]}
-                  onChange={(v) => setForm({ ...form, areaType: v as "Urban" | "Rural" })}
+                  errored={!!errors.areaType}
+                  onChange={(v) => { clearError("areaType"); setForm({ ...form, areaType: v as "Urban" | "Rural" }); }}
                 />
               </Field>
 
-              {/* Gender (existing) */}
+              {/* Gender (NOT required — no asterisk) */}
               <Field label={t("elig.gender")} id="gender">
                 <Select value={form.gender ?? ""} onValueChange={(v) => setForm({ ...form, gender: v })}>
                   <SelectTrigger id="gender"><SelectValue placeholder="Select" /></SelectTrigger>
@@ -276,27 +435,150 @@ export default function Eligibility() {
                 </Select>
               </Field>
 
-              {/* Annual Income (existing) — required */}
-              <Field label={t("elig.income")} id="income" required>
-                <Input id="income" type="number" min={0} required value={form.annualIncome || ""}
-                  onChange={(e) => setForm({ ...form, annualIncome: Number(e.target.value) })} />
+              {/* Annual Income (personal — required) */}
+              <Field
+                label={t("elig.income")} id="income" required
+                error={errors.annualIncome}
+                refCb={(el) => (fieldRefs.current.annualIncome = el)}
+              >
+                <Input
+                  id="income" type="number" min={0}
+                  placeholder="Enter amount"
+                  value={form.annualIncome || ""}
+                  className={cn(errors.annualIncome && "border-destructive")}
+                  onChange={(e) => { clearError("annualIncome"); setForm({ ...form, annualIncome: Number(e.target.value) }); }}
+                />
               </Field>
 
-              {/* NEW #4 — Below Poverty Line (BPL) Yes/No toggle, required.
-                  Renders full-width so the labels breathe on mobile. */}
-              <div className="sm:col-span-2">
-                <Field label="Below Poverty Line (BPL)" id="bpl" required>
+              {/* BPL Yes/No — required, drives conditional rendering below */}
+              <div className="sm:col-span-2" ref={(el) => (fieldRefs.current.isBpl = el)}>
+                <Field label="Below Poverty Line (BPL)" id="bpl" required error={errors.isBpl}>
                   <YesNoToggle
                     value={form.isBpl}
-                    onChange={(v) => setForm({ ...form, isBpl: v })}
+                    errored={!!errors.isBpl}
+                    onChange={setBpl}
                   />
                 </Field>
+
+                {/* ---- Conditional region: animated open/close (150ms) ---- */}
+                <div
+                  className={cn(
+                    "mt-4 grid gap-4 transition-all duration-150 ease-out",
+                    form.isBpl === undefined ? "opacity-0 pointer-events-none max-h-0" : "opacity-100 max-h-[800px]",
+                  )}
+                  aria-hidden={form.isBpl === undefined}
+                >
+                  {form.isBpl === true && (
+                    <Field
+                      label="Are you in any of the following condition — Destitute / Penury / Extreme Hardship / Distress"
+                      id="distressed"
+                      required
+                      error={errors.isDistressed}
+                      refCb={(el) => (fieldRefs.current.isDistressed = el)}
+                    >
+                      <YesNoToggle
+                        value={form.isDistressed}
+                        errored={!!errors.isDistressed}
+                        onChange={(v) => { clearError("isDistressed"); setForm({ ...form, isDistressed: v }); }}
+                      />
+                    </Field>
+                  )}
+
+                  {form.isBpl === false && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {/* Family Annual Income */}
+                      <Field
+                        label="Annual Family Income (₹)"
+                        id="familyIncome"
+                        required
+                        error={errors.familyAnnualIncome}
+                        refCb={(el) => (fieldRefs.current.familyAnnualIncome = el)}
+                      >
+                        <Input
+                          id="familyIncome"
+                          type="number"
+                          min={0}
+                          placeholder="Enter amount"
+                          value={form.familyAnnualIncome ?? ""}
+                          className={cn(errors.familyAnnualIncome && "border-destructive")}
+                          onChange={(e) => {
+                            clearError("familyAnnualIncome");
+                            const raw = e.target.value;
+                            setForm({ ...form, familyAnnualIncome: raw === "" ? null : Number(raw) });
+                          }}
+                        />
+                      </Field>
+
+                      {/* Parent / Guardian Annual Income with inline NA pill */}
+                      <Field
+                        label="Parent / Guardian Annual Income (₹)"
+                        id="guardianIncome"
+                        required
+                        error={errors.guardianAnnualIncome}
+                        refCb={(el) => (fieldRefs.current.guardianAnnualIncome = el)}
+                      >
+                        <div className="flex gap-2">
+                          <Input
+                            id="guardianIncome"
+                            type="number"
+                            min={0}
+                            placeholder="Enter amount"
+                            disabled={!!form.guardianNotApplicable}
+                            value={form.guardianAnnualIncome ?? ""}
+                            className={cn(
+                              "flex-1",
+                              errors.guardianAnnualIncome && "border-destructive",
+                              form.guardianNotApplicable && "bg-muted text-muted-foreground",
+                            )}
+                            onChange={(e) => {
+                              clearError("guardianAnnualIncome");
+                              const raw = e.target.value;
+                              setForm({ ...form, guardianAnnualIncome: raw === "" ? null : Number(raw) });
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              clearError("guardianAnnualIncome");
+                              autoSetByAgeRef.current = false; // user is overriding manually
+                              const next = !form.guardianNotApplicable;
+                              setForm({
+                                ...form,
+                                guardianNotApplicable: next,
+                                // Clear the input value when switching to NA
+                                guardianAnnualIncome: next ? null : form.guardianAnnualIncome,
+                              });
+                            }}
+                            className={cn(
+                              "rounded-md border px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap",
+                              form.guardianNotApplicable
+                                ? "border-primary bg-secondary font-bold text-primary"
+                                : "border-border bg-card text-muted-foreground hover:text-foreground",
+                            )}
+                            aria-pressed={!!form.guardianNotApplicable}
+                          >
+                            Not Applicable
+                          </button>
+                        </div>
+                      </Field>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Category (existing, expanded) — required */}
-              <Field label={t("elig.category")} id="cat" required>
-                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                  <SelectTrigger id="cat"><SelectValue placeholder="Select" /></SelectTrigger>
+              {/* Category (required) */}
+              <Field
+                label={t("elig.category")} id="cat" required
+                error={errors.category}
+                refCb={(el) => (fieldRefs.current.category = el)}
+              >
+                <Select
+                  value={form.category}
+                  onValueChange={(v) => { clearError("category"); setForm({ ...form, category: v }); }}
+                >
+                  <SelectTrigger id="cat" className={cn(errors.category && "border-destructive")}>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
                   <SelectContent>
                     {CATEGORY_OPTIONS.map((c) => (
                       <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
@@ -305,13 +587,13 @@ export default function Eligibility() {
                 </Select>
               </Field>
 
-              {/* Occupation (existing) */}
+              {/* Occupation (NOT required) */}
               <Field label={t("elig.occupation")} id="occ">
                 <Input id="occ" placeholder="e.g. Farmer, Student" value={form.occupation}
                   onChange={(e) => setForm({ ...form, occupation: e.target.value })} />
               </Field>
 
-              {/* Disability switch (existing) — full row */}
+              {/* Disability switch — full row, NOT required */}
               <div className="sm:col-span-2 flex items-center justify-between rounded-lg border border-border bg-secondary/40 px-4 py-3">
                 <div>
                   <Label htmlFor="dis" className="font-medium">{t("elig.disability")}</Label>
@@ -325,8 +607,7 @@ export default function Eligibility() {
                 {t("elig.submit")} <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
 
-              {/* NEW #6 — Optional "Looking for something specific?" section.
-                  Sits BELOW the submit button as per spec. No asterisk. */}
+              {/* Optional "Looking for something specific?" — hard filter mode */}
               <div className="sm:col-span-2 mt-2 rounded-lg border border-border bg-secondary/30 p-4">
                 <h3 className="text-base font-bold text-primary">Looking for something specific?</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -342,13 +623,17 @@ export default function Eligibility() {
                     onChange={(e) => setForm({ ...form, prioritySearch: e.target.value })}
                   />
                 </div>
+                {/* Helper text — small, light grey, explains the hard-filter behaviour. */}
+                <p className="mt-2 text-xs text-[#6B7280]">
+                  * If filled, only schemes matching this term will be shown — eligibility ranking and the filter will be disabled.
+                </p>
               </div>
             </form>
           </CardContent>
         </Card>
 
         {/* =============================================================
-             RIGHT COLUMN — Live matches + filter + ineligible rail
+             RIGHT COLUMN — Live matches + filter + Browse all section
              ============================================================= */}
         <div id="matches-panel" className="space-y-4">
           <Card className="shadow-elegant">
@@ -357,21 +642,17 @@ export default function Eligibility() {
                 <span className="truncate">{t("elig.matches")}</span>
 
                 <div className="flex items-center gap-2">
-                  {/* NEW #5 — Filter dropdown lives in the panel header.
-                      Only revealed once the user has submitted at least once. */}
-                  {hasSubmitted && (
+                  {/* Filter dropdown — hidden when priority search is active. */}
+                  {hasSubmitted && !priorityActive && (
                     <div className="flex items-center gap-2">
                       <Label htmlFor="filter" className="hidden text-xs font-medium text-primary sm:inline">
-                        <span className="text-destructive">*</span> Filter results by
+                        Filter results by
                       </Label>
                       <Select
                         value={filterCategory}
                         onValueChange={(v) => setFilterCategory(v as typeof FILTER_OPTIONS[number])}
                       >
-                        <SelectTrigger
-                          id="filter"
-                          className="h-8 w-[160px] bg-card text-xs"
-                        >
+                        <SelectTrigger id="filter" className="h-8 w-[160px] bg-card text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -383,29 +664,45 @@ export default function Eligibility() {
                     </div>
                   )}
                   <Badge variant="secondary" className="bg-primary text-primary-foreground">
-                    {visibleMatches.length}
+                    {hasSubmitted ? visibleMatches.length : 0}
                   </Badge>
                 </div>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 max-h-[640px] overflow-auto space-y-3">
-              {isLoading && <p className="text-sm text-muted-foreground">{t("common.loading")}</p>}
-
-              {/* Empty-state copy — shown until the user starts entering data. */}
-              {!isLoading && !hasSubmitted && visibleMatches.length === 0 && (
-                <p className="text-sm text-muted-foreground">{t("elig.matches.empty")}</p>
-              )}
-
-              {!isLoading && hasSubmitted && visibleMatches.length === 0 && (
+              {/* Pre-submit state — single explanatory sentence, per spec change #6. */}
+              {!hasSubmitted && (
                 <p className="text-sm text-muted-foreground">
-                  No eligible schemes for this filter. Try "All Categories" or adjust your form.
+                  Fill out the form on the left to see schemes tailored to your profile, or browse the full directory below.
                 </p>
               )}
 
-              {visibleMatches.map((s) => (
+              {hasSubmitted && isLoading && (
+                <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+              )}
+
+              {hasSubmitted && !isLoading && visibleMatches.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {priorityActive
+                    ? `No schemes matched "${form.prioritySearch?.trim()}".`
+                    : "No eligible schemes for this filter. Try \"All Categories\" or adjust your form."}
+                </p>
+              )}
+
+              {hasSubmitted && visibleMatches.map((s) => (
                 <div
                   key={s.id}
-                  className="rounded-lg border border-border bg-card p-3 transition-colors hover:bg-secondary/40"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/schemes/${s.id}`)}
+                  onKeyDown={(e) => {
+                    // Keyboard accessibility — Enter / Space activates the card.
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(`/schemes/${s.id}`);
+                    }
+                  }}
+                  className="cursor-pointer rounded-lg border border-border bg-card p-3 transition-all hover:border-[#AACDE0] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -423,43 +720,28 @@ export default function Eligibility() {
             </CardContent>
           </Card>
 
-          {/* "Other schemes in the {term} field" — only when priority search active */}
-          {ineligiblePriorityMatches.length > 0 && (
-            <Card className="border-border/70 bg-muted/40 shadow-sm">
-              <CardHeader className="rounded-t-lg bg-muted/60">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Other schemes in the "{form.prioritySearch?.trim()}" field you are not currently eligible for
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 space-y-2">
-                {ineligiblePriorityMatches.map((s) => (
-                  <div
-                    key={s.id}
-                    className="rounded-md border border-border/60 bg-card/70 p-3"
+          {/* Sprint 5 Change #6 — "Browse all schemes" — ALWAYS visible. */}
+          <Card className="shadow-sm">
+            <CardContent className="p-5">
+              <div className="flex items-start gap-3">
+                <Compass className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-[18px] font-bold text-primary">Browse all schemes</h3>
+                  <p className="mt-1 text-[13px] text-[#6B7280]">
+                    Explore the full directory of available government welfare schemes.
+                  </p>
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="mt-4 font-semibold"
+                    onClick={() => navigate("/schemes")}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground/80">{s.name}</p>
-                        <p className="text-xs text-muted-foreground">{s.category}</p>
-                      </div>
-                      <span className="text-xs font-semibold text-muted-foreground tabular-nums">
-                        {s.score}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 text-xs text-muted-foreground italic">Reason: {s.reason}</p>
-                  </div>
-                ))}
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="px-0 text-xs"
-                  onClick={() => navigate("/schemes")}
-                >
-                  Browse all schemes →
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+                    Browse All Schemes <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
@@ -482,7 +764,11 @@ function defaultForm(): UserForm {
     disability: false,
     stateOfResidence: "",
     areaType: "",
-    isBpl: false,
+    isBpl: undefined, // explicit undefined so the BPL toggle starts unselected
+    isDistressed: undefined,
+    familyAnnualIncome: null,
+    guardianAnnualIncome: null,
+    guardianNotApplicable: false,
     prioritySearch: "",
   };
 }
@@ -490,25 +776,31 @@ function defaultForm(): UserForm {
 /**
  * Field
  * ------------------------------------------------------------
- * Tiny labelled-field helper to keep the form JSX readable.
- * When `required` is true we render a small red asterisk before
- * the label text, matching the spec's #DC2626 colour.
+ * Tiny labelled-field helper. Adds:
+ *   • Red asterisk when `required`.
+ *   • "Needs to be filled in" red error message when `error` is set.
+ *   • Optional ref callback so the parent can scroll to it on submit.
  */
 function Field({
-  label, id, required, children,
+  label, id, required, children, error, refCb,
 }: {
   label: string;
   id: string;
   required?: boolean;
   children: React.ReactNode;
+  error?: string;
+  refCb?: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5" ref={refCb}>
       <Label htmlFor={id} className="text-sm font-medium">
-        {required && <span className="mr-0.5 text-destructive">*</span>}
+        {required && <span className="mr-0.5 text-[#DC2626]">*</span>}
         {label}
       </Label>
       {children}
+      {error && (
+        <p className="mt-1 text-[12px] text-[#DC2626]">{error}</p>
+      )}
     </div>
   );
 }
@@ -516,19 +808,25 @@ function Field({
 /**
  * PillToggle
  * ------------------------------------------------------------
- * Generic two/three-option pill segmented control. Used by the
- * Area Type field (Urban / Rural). Visually mirrors the Disability
- * Switch container so the form feels consistent.
+ * Generic two-option pill segmented control. Used by the Area Type
+ * field. When `errored` is true we tint the container border red so
+ * the validation message has visual context.
  */
 function PillToggle({
-  value, options, onChange,
+  value, options, onChange, errored,
 }: {
   value: string;
   options: string[];
   onChange: (v: string) => void;
+  errored?: boolean;
 }) {
   return (
-    <div className="inline-flex w-full rounded-lg border border-border bg-secondary/40 p-1">
+    <div
+      className={cn(
+        "inline-flex w-full rounded-lg border bg-secondary/40 p-1",
+        errored ? "border-[#DC2626]" : "border-border",
+      )}
+    >
       {options.map((opt) => {
         const active = value === opt;
         return (
@@ -555,23 +853,29 @@ function PillToggle({
 /**
  * YesNoToggle
  * ------------------------------------------------------------
- * Two-button Yes/No control for the BPL field. Per spec:
+ * Two-button Yes/No control used by BPL and the Distress question.
+ * Per spec:
  *   • Both buttons are white with a thin grey border.
  *   • Selected option gets a green border (#16A34A) + pale green
  *     fill (#F0FDF4) and bold green text.
  *   • Unselected stays white with grey text.
- * We hard-code the green here because the project's success token
- * is a different shade reserved for the Verified badge.
+ *   • When `errored`, the unselected baseline border is red.
+ *
+ * Accepts `value` of true | false | undefined so an unanswered field
+ * can start with neither button selected.
  */
 function YesNoToggle({
-  value, onChange,
+  value, onChange, errored,
 }: {
   value: boolean | undefined;
   onChange: (v: boolean) => void;
+  errored?: boolean;
 }) {
-  // Shared base for both pills — white background, rounded corners, etc.
   const base =
     "flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const inactive = errored
+    ? "border-[#DC2626] bg-card text-muted-foreground"
+    : "border-border bg-card text-muted-foreground hover:text-foreground";
 
   return (
     <div className="flex gap-2">
@@ -580,9 +884,7 @@ function YesNoToggle({
         onClick={() => onChange(true)}
         className={cn(
           base,
-          value === true
-            ? "border-[#16A34A] bg-[#F0FDF4] font-bold text-[#16A34A]"
-            : "border-border bg-card text-muted-foreground hover:text-foreground",
+          value === true ? "border-[#16A34A] bg-[#F0FDF4] font-bold text-[#16A34A]" : inactive,
         )}
         aria-pressed={value === true}
       >
@@ -593,9 +895,7 @@ function YesNoToggle({
         onClick={() => onChange(false)}
         className={cn(
           base,
-          value === false
-            ? "border-[#16A34A] bg-[#F0FDF4] font-bold text-[#16A34A]"
-            : "border-border bg-card text-muted-foreground hover:text-foreground",
+          value === false ? "border-[#16A34A] bg-[#F0FDF4] font-bold text-[#16A34A]" : inactive,
         )}
         aria-pressed={value === false}
       >

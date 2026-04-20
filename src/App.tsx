@@ -24,6 +24,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Home from "@/pages/Home";
 import Eligibility from "@/pages/Eligibility";
 import Schemes from "@/pages/Schemes";
+import SchemeDetail from "@/pages/SchemeDetail";
 import NgoPartners from "@/pages/NgoPartners";
 import Status from "@/pages/Status";
 import Notifications from "@/pages/Notifications";
@@ -51,6 +52,7 @@ const App = () => (
                   <Route path="/" element={<Home />} />
                   <Route path="/eligibility" element={<Eligibility />} />
                   <Route path="/schemes" element={<Schemes />} />
+                  <Route path="/schemes/:schemeId" element={<SchemeDetail />} />
                   <Route path="/schemes/:schemeId/ngos" element={<NgoPartners />} />
                   <Route path="/auth" element={<Auth />} />
                   <Route path="/auth/callback" element={<AuthCallback />} />

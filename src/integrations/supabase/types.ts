@@ -97,6 +97,69 @@ export type Database = {
           },
         ]
       }
+      eligibility_submissions: {
+        Row: {
+          age: number | null
+          annual_income: number | null
+          area_type: string | null
+          category: string | null
+          created_at: string
+          disability: boolean | null
+          family_annual_income: number | null
+          full_name: string | null
+          gender: string | null
+          guardian_annual_income: number | null
+          guardian_not_applicable: boolean | null
+          id: string
+          is_bpl: boolean | null
+          is_distressed: boolean | null
+          occupation: string | null
+          priority_search: string | null
+          state_of_residence: string | null
+          user_id: string
+        }
+        Insert: {
+          age?: number | null
+          annual_income?: number | null
+          area_type?: string | null
+          category?: string | null
+          created_at?: string
+          disability?: boolean | null
+          family_annual_income?: number | null
+          full_name?: string | null
+          gender?: string | null
+          guardian_annual_income?: number | null
+          guardian_not_applicable?: boolean | null
+          id?: string
+          is_bpl?: boolean | null
+          is_distressed?: boolean | null
+          occupation?: string | null
+          priority_search?: string | null
+          state_of_residence?: string | null
+          user_id: string
+        }
+        Update: {
+          age?: number | null
+          annual_income?: number | null
+          area_type?: string | null
+          category?: string | null
+          created_at?: string
+          disability?: boolean | null
+          family_annual_income?: number | null
+          full_name?: string | null
+          gender?: string | null
+          guardian_annual_income?: number | null
+          guardian_not_applicable?: boolean | null
+          id?: string
+          is_bpl?: boolean | null
+          is_distressed?: boolean | null
+          occupation?: string | null
+          priority_search?: string | null
+          state_of_residence?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       ngos: {
         Row: {
           created_at: string

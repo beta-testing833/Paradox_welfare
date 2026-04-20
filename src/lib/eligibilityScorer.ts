@@ -34,6 +34,11 @@ export interface UserForm {
   stateOfResidence?: string; // e.g. "West Bengal"
   areaType?: "Urban" | "Rural" | ""; // empty = not yet answered
   isBpl?: boolean;
+  // ---- Sprint 5 BPL-conditional additions ----
+  isDistressed?: boolean;            // only meaningful when isBpl === true
+  familyAnnualIncome?: number | null; // only when isBpl === false
+  guardianAnnualIncome?: number | null; // only when isBpl === false
+  guardianNotApplicable?: boolean;   // pairs with guardianAnnualIncome
   prioritySearch?: string;   // free-text, used by the page (not by scorer)
 }
 
@@ -72,6 +77,7 @@ export interface ScoreableScheme {
   allowed_states?: string[] | null;     // empty / null = central scheme
   target_area?: "Any" | "Urban" | "Rural" | string | null;
   requires_bpl?: boolean | null;
+  category?: string | null;             // used for the BPL+distress bonus
 }
 
 /**
@@ -106,7 +112,16 @@ export function calculateScore(
 
   // ================== Income (25 pts) ==================
   // Heaviest single weight — most common disqualifier in welfare schemes.
-  if (typeof crit.max_income === "number") {
+  // Sprint 5 special-case: if the user answered BPL = Yes, automatically
+  // grant the full 25 income-match points to any scheme that either
+  // (a) explicitly requires BPL or (b) has no income ceiling at all. This
+  // mirrors how government schemes treat BPL-card holders as pre-qualified
+  // on the income axis. For schemes that DO have an income ceiling and
+  // don't require BPL, we still apply the standard rule using personal
+  // annualIncome — being BPL doesn't override an explicit income cap.
+  if (form.isBpl && (schemeMeta.requires_bpl || typeof crit.max_income !== "number")) {
+    score += 25;
+  } else if (typeof crit.max_income === "number") {
     if (form.annualIncome <= crit.max_income) score += 25;
   } else {
     score += 25; // No income limit → automatic full points.
@@ -183,6 +198,17 @@ export function calculateScore(
   // the points accumulated above.
   if (crit.gender_required && form.gender && crit.gender_required !== form.gender) {
     return 0;
+  }
+
+  // ================== Distress bonus (Sprint 5, +5 pts, capped at 100) ==================
+  // When the user is BOTH BPL and in extreme distress, give an extra nudge to
+  // the schemes most likely to provide immediate relief: Food Security,
+  // Disability and Health. Cap is enforced by the final clamp below.
+  if (form.isBpl && form.isDistressed) {
+    const cat = (schemeMeta.category ?? "").toLowerCase();
+    if (cat === "food security" || cat === "disability" || cat === "health") {
+      score += 5;
+    }
   }
 
   // Clamp into [0, 100] just in case future weight tweaks break the math.
