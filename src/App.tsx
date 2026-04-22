@@ -38,6 +38,9 @@ import Auth from "@/pages/Auth";
 import AuthCallback from "@/pages/AuthCallback";
 import ResetPassword from "@/pages/ResetPassword";
 import Subscription from "@/pages/Subscription";
+import AgentLogin from "@/pages/AgentLogin";
+import AgentDashboard from "@/pages/AgentDashboard";
+import AgentApplicationDetail from "@/pages/AgentApplicationDetail";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -73,6 +76,11 @@ const App = () => (
                   <Route path="/profile"       element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                   <Route path="/dashboard"     element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                   <Route path="/subscription"  element={<ProtectedRoute><Subscription /></ProtectedRoute>} />
+
+                  {/* Agent portal */}
+                  <Route path="/agent/login" element={<AgentLogin />} />
+                  <Route path="/agent/dashboard" element={<ProtectedRoute requiredRole="agent"><AgentDashboard /></ProtectedRoute>} />
+                  <Route path="/agent/application/:id" element={<ProtectedRoute requiredRole="agent"><AgentApplicationDetail /></ProtectedRoute>} />
 
                   {/* Catch-all 404 */}
                   <Route path="*" element={<NotFound />} />
