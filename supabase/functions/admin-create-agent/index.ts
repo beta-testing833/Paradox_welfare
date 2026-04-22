@@ -111,10 +111,11 @@ Deno.serve(async (req) => {
     user_metadata: { full_name: body.full_name.trim() },
   });
   if (userErr || !userData.user) {
-    return jsonResponse(
-      { error: userErr?.message ?? "Could not create auth user" },
-      400,
-    );
+    const raw = userErr?.message ?? "Could not create auth user";
+    const friendly = /already been registered|already registered|exists/i.test(raw)
+      ? "An account with this email already exists. Use a different email for the agent (tip: Gmail accepts +suffix aliases like name+agent1@gmail.com)."
+      : raw;
+    return jsonResponse({ error: friendly }, 400);
   }
   const newUserId = userData.user.id;
 
