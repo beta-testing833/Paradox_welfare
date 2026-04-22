@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       agents: {
         Row: {
+          auth_user_id: string | null
           created_at: string
           email: string | null
           full_name: string
@@ -26,6 +27,7 @@ export type Database = {
           specialization: string[] | null
         }
         Insert: {
+          auth_user_id?: string | null
           created_at?: string
           email?: string | null
           full_name: string
@@ -36,6 +38,7 @@ export type Database = {
           specialization?: string[] | null
         }
         Update: {
+          auth_user_id?: string | null
           created_at?: string
           email?: string | null
           full_name?: string
@@ -50,26 +53,32 @@ export type Database = {
       application_documents: {
         Row: {
           application_id: string
+          file_mime_type: string | null
           file_name: string
           file_path: string
           file_size_bytes: number
           id: string
+          is_verified: boolean | null
           uploaded_at: string
         }
         Insert: {
           application_id: string
+          file_mime_type?: string | null
           file_name: string
           file_path: string
           file_size_bytes: number
           id?: string
+          is_verified?: boolean | null
           uploaded_at?: string
         }
         Update: {
           application_id?: string
+          file_mime_type?: string | null
           file_name?: string
           file_path?: string
           file_size_bytes?: number
           id?: string
+          is_verified?: boolean | null
           uploaded_at?: string
         }
         Relationships: [
@@ -94,6 +103,7 @@ export type Database = {
           aadhar: string | null
           agent_assigned_at: string | null
           applied_at: string
+          applied_via: string | null
           assigned_agent_id: string | null
           consultation_date: string | null
           consultation_status: string | null
@@ -111,6 +121,7 @@ export type Database = {
           aadhar?: string | null
           agent_assigned_at?: string | null
           applied_at?: string
+          applied_via?: string | null
           assigned_agent_id?: string | null
           consultation_date?: string | null
           consultation_status?: string | null
@@ -128,6 +139,7 @@ export type Database = {
           aadhar?: string | null
           agent_assigned_at?: string | null
           applied_at?: string
+          applied_via?: string | null
           assigned_agent_id?: string | null
           consultation_date?: string | null
           consultation_status?: string | null
