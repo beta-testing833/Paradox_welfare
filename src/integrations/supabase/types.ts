@@ -491,13 +491,19 @@ export type Database = {
           created_at: string
           description: string | null
           eligibility_criteria: Json
+          expiry_date: string | null
+          fts_vector: unknown
           id: string
           is_verified: boolean
+          launch_date: string | null
+          ministry: string | null
           name: string
           official_portal_url: string | null
           required_documents: string[]
           requires_bpl: boolean
+          state_specific: string[] | null
           subcategory: string | null
+          tags: string[] | null
           target_area: string
         }
         Insert: {
@@ -507,13 +513,19 @@ export type Database = {
           created_at?: string
           description?: string | null
           eligibility_criteria?: Json
+          expiry_date?: string | null
+          fts_vector?: unknown
           id?: string
           is_verified?: boolean
+          launch_date?: string | null
+          ministry?: string | null
           name: string
           official_portal_url?: string | null
           required_documents?: string[]
           requires_bpl?: boolean
+          state_specific?: string[] | null
           subcategory?: string | null
+          tags?: string[] | null
           target_area?: string
         }
         Update: {
@@ -523,13 +535,19 @@ export type Database = {
           created_at?: string
           description?: string | null
           eligibility_criteria?: Json
+          expiry_date?: string | null
+          fts_vector?: unknown
           id?: string
           is_verified?: boolean
+          launch_date?: string | null
+          ministry?: string | null
           name?: string
           official_portal_url?: string | null
           required_documents?: string[]
           requires_bpl?: boolean
+          state_specific?: string[] | null
           subcategory?: string | null
+          tags?: string[] | null
           target_area?: string
         }
         Relationships: []
