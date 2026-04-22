@@ -35,6 +35,7 @@ import Notifications from "@/pages/Notifications";
 import Profile from "@/pages/Profile";
 import Dashboard from "@/pages/Dashboard";
 import Auth from "@/pages/Auth";
+import AuthChooser from "@/pages/AuthChooser";
 import AuthCallback from "@/pages/AuthCallback";
 import ResetPassword from "@/pages/ResetPassword";
 import Subscription from "@/pages/Subscription";
@@ -66,7 +67,8 @@ const App = () => (
                     path="/schemes/:schemeId/ngos"
                     element={<Navigate to=".." relative="path" replace />}
                   />
-                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/auth" element={<AuthChooser />} />
+                  <Route path="/auth/citizen" element={<Auth />} />
                   <Route path="/auth/callback" element={<AuthCallback />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
 
