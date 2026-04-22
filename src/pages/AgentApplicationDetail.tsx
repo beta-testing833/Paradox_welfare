@@ -15,9 +15,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, FileText, Loader2, AlertTriangle, Clock } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, AlertTriangle, Clock, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useState } from "react";
 
 interface AgentApplicationDetail {
   id: string;
@@ -230,22 +232,11 @@ export default function AgentApplicationDetail() {
               <>
                 <ul className="space-y-2">
                   {app.documents.map((d) => (
-                    <li
-                      key={d.id}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-3"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <FileText className="h-4 w-4 shrink-0 text-primary" />
-                        <span className="truncate text-sm font-medium">{d.file_name}</span>
-                      </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatBytes(d.file_size_bytes)}
-                      </span>
-                    </li>
+                    <DocumentRow key={d.id} doc={d} />
                   ))}
                 </ul>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Files are stored privately and accessible via secure signed URLs.
+                  Files are stored privately. Download links are short-lived signed URLs valid for 1 hour.
                 </p>
               </>
             )}
@@ -321,5 +312,47 @@ function Row({ k, v, multiline }: { k: string; v: string; multiline?: boolean })
       <span className="text-sm text-muted-foreground">{k}</span>
       <span className={multiline ? "block text-sm" : "text-sm font-medium"}>{v}</span>
     </div>
+  );
+}
+
+/**
+ * Single document row with an on-demand "Download" button. We mint a signed
+ * URL when the agent clicks so links never persist in the DOM/markup.
+ */
+function DocumentRow({
+  doc,
+}: {
+  doc: { id: string; file_name: string; file_size_bytes: number; file_path: string };
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleDownload() {
+    setBusy(true);
+    const { data, error } = await supabase
+      .storage
+      .from("application-docs")
+      .createSignedUrl(doc.file_path, 3600);
+    setBusy(false);
+    if (error || !data?.signedUrl) {
+      toast.error(error?.message ?? "Could not generate download link");
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <FileText className="h-4 w-4 shrink-0 text-primary" />
+        <span className="truncate text-sm font-medium">{doc.file_name}</span>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <span className="text-xs text-muted-foreground">{formatBytes(doc.file_size_bytes)}</span>
+        <Button size="sm" variant="outline" onClick={handleDownload} disabled={busy}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          <span className="ml-1.5 hidden sm:inline">Download</span>
+        </Button>
+      </div>
+    </li>
   );
 }
