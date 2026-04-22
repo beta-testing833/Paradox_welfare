@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // CRITICAL: route the verification link through /auth/callback on
         // the *current* origin so it always points at the live app the user
         // is signing up from — never localhost.
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}auth/callback`.replace(/\/\//g, '/'),
         data: { full_name: fullName },
       },
     });
