@@ -41,6 +41,7 @@ import Subscription from "@/pages/Subscription";
 import AgentLogin from "@/pages/AgentLogin";
 import AgentDashboard from "@/pages/AgentDashboard";
 import AgentApplicationDetail from "@/pages/AgentApplicationDetail";
+import AdminCreateAgent from "@/pages/AdminCreateAgent";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
