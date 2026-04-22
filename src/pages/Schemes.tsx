@@ -138,6 +138,7 @@ export default function Schemes() {
   // Fetch every scheme once (RLS allows public read). Sort for predictability.
   const { data: schemes = [], isLoading } = useQuery({
     queryKey: ["schemes-all"],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("schemes")

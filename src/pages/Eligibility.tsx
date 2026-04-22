@@ -176,6 +176,7 @@ export default function Eligibility() {
   // ---- Live Supabase query: load every scheme once, score them client-side. ----
   const { data: schemes = [], isLoading } = useQuery({
     queryKey: ["schemes", "eligibility"],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       // Pull every scheme — RLS already restricts to "Schemes are public".
       const { data, error } = await supabase
