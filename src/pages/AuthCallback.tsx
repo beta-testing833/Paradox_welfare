@@ -51,27 +51,40 @@ export default function AuthCallback() {
       return;
     }
 
-    // Healthy link — give the SDK a moment to swap the URL tokens for a
-    // session, then check.
-    const timer = window.setTimeout(async () => {
+    // Healthy link — poll up to 5 times (every 500ms) for the SDK to swap
+    // URL tokens for a session. Handles slow connections better than a single
+    // fixed-delay timer.
+    let attempts = 0;
+    const poll = setInterval(async () => {
+      attempts++;
       try {
         const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
+        if (error) {
+          clearInterval(poll);
+          setErrorMessage(error.message);
+          setPhase("error");
+          return;
+        }
         if (data.session) {
+          clearInterval(poll);
           toast.success("Email verified — welcome!");
           navigate("/dashboard", { replace: true });
-        } else {
-          // No error, but no session either — bounce to /auth so the user can sign in.
+          return;
+        }
+        if (attempts >= 5) {
+          clearInterval(poll);
+          console.warn("[AuthCallback] No session after 5 polls — redirecting to /auth");
           navigate("/auth", { replace: true });
         }
       } catch (e) {
+        clearInterval(poll);
         const msg = e instanceof Error ? e.message : "Could not complete sign-in.";
         setErrorMessage(msg);
         setPhase("error");
       }
-    }, 250);
+    }, 500);
 
-    return () => window.clearTimeout(timer);
+    return () => clearInterval(poll);
   }, [navigate]);
 
   /** Re-send the signup confirmation email to the address the user types. */
