@@ -20,7 +20,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
-import { LiteracyProvider } from "@/contexts/LiteracyContext";
+
 
 import Layout from "@/components/Layout";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -45,8 +45,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <LanguageProvider>
-      <LiteracyProvider>
-        <AuthProvider>
+      <AuthProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -81,8 +80,7 @@ const App = () => (
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
-        </AuthProvider>
-      </LiteracyProvider>
+      </AuthProvider>
     </LanguageProvider>
   </QueryClientProvider>
 );
