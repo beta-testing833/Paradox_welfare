@@ -15,9 +15,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, FileText, Loader2, AlertTriangle, Clock } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, AlertTriangle, Clock, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useState } from "react";
 
 interface AgentApplicationDetail {
   id: string;
@@ -230,22 +232,11 @@ export default function AgentApplicationDetail() {
               <>
                 <ul className="space-y-2">
                   {app.documents.map((d) => (
-                    <li
-                      key={d.id}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-3"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <FileText className="h-4 w-4 shrink-0 text-primary" />
-                        <span className="truncate text-sm font-medium">{d.file_name}</span>
-                      </div>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatBytes(d.file_size_bytes)}
-                      </span>
-                    </li>
+                    <DocumentRow key={d.id} doc={d} />
                   ))}
                 </ul>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Files are stored privately and accessible via secure signed URLs.
+                  Files are stored privately. Download links are short-lived signed URLs valid for 1 hour.
                 </p>
               </>
             )}
