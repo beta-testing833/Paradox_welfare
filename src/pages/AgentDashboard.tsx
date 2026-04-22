@@ -74,25 +74,11 @@ export default function AgentDashboard() {
   const queryClient = useQueryClient();
   const meta = (user?.app_metadata as { role?: string; agent_id?: string } | undefined) ?? {};
   const agentId = meta.agent_id;
-
-  if (meta.role !== "agent") {
-    return (
-      <div className="container flex min-h-[60vh] flex-col items-center justify-center gap-4 py-12 text-center">
-        <AlertTriangle className="h-10 w-10 text-destructive" />
-        <h1 className="text-2xl font-bold">Access Denied</h1>
-        <p className="max-w-md text-muted-foreground">
-          You are not authorised to view this page.
-        </p>
-        <Button asChild>
-          <Link to="/">Go home</Link>
-        </Button>
-      </div>
-    );
-  }
+  const isAgent = meta.role === "agent";
 
   const { data: applications = [], isLoading, error } = useQuery({
     queryKey: ["agent-applications", agentId],
-    enabled: !!agentId,
+    enabled: !!agentId && isAgent,
     staleTime: 30 * 1000,
     queryFn: async (): Promise<AgentApplicationRow[]> => {
       const { data, error } = await supabase
@@ -133,6 +119,23 @@ export default function AgentDashboard() {
     }
     toast.success(`Status updated to "${newStatus}".`);
     queryClient.invalidateQueries({ queryKey: ["agent-applications", agentId] });
+  }
+
+  // Defensive: ProtectedRoute already enforces role, but agent_id may be missing
+  // if the admin hasn't set it on the user yet. All hooks above run unconditionally.
+  if (!isAgent) {
+    return (
+      <div className="container flex min-h-[60vh] flex-col items-center justify-center gap-4 py-12 text-center">
+        <AlertTriangle className="h-10 w-10 text-destructive" />
+        <h1 className="text-2xl font-bold">Access Denied</h1>
+        <p className="max-w-md text-muted-foreground">
+          You are not authorised to view this page.
+        </p>
+        <Button asChild>
+          <Link to="/">Go home</Link>
+        </Button>
+      </div>
+    );
   }
 
   return (
