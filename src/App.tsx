@@ -41,6 +41,7 @@ import Subscription from "@/pages/Subscription";
 import AgentLogin from "@/pages/AgentLogin";
 import AgentDashboard from "@/pages/AgentDashboard";
 import AgentApplicationDetail from "@/pages/AgentApplicationDetail";
+import AdminCreateAgent from "@/pages/AdminCreateAgent";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -81,6 +82,9 @@ const App = () => (
                   <Route path="/agent/login" element={<AgentLogin />} />
                   <Route path="/agent/dashboard" element={<ProtectedRoute requiredRole="agent"><AgentDashboard /></ProtectedRoute>} />
                   <Route path="/agent/application/:id" element={<ProtectedRoute requiredRole="agent"><AgentApplicationDetail /></ProtectedRoute>} />
+
+                  {/* Admin */}
+                  <Route path="/admin/agents/new" element={<ProtectedRoute requiredRole="admin"><AdminCreateAgent /></ProtectedRoute>} />
 
                   {/* Catch-all 404 */}
                   <Route path="*" element={<NotFound />} />
