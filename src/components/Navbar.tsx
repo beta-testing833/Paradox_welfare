@@ -11,13 +11,13 @@
  */
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
-  Home, FileSearch, FileText, Activity, Bell, User, Menu, Eye, Globe,
+  Home, FileSearch, FileText, Activity, Bell, User, Menu, Globe,
   LogIn, LogOut, ShieldCheck, Sparkles, ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useLiteracy } from "@/contexts/LiteracyContext";
+
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -36,7 +36,7 @@ interface NavItem {
 export default function Navbar() {
   const { t } = useLanguage();
   const { language, setLanguage } = useLanguage();
-  const { literacyMode, toggleLiteracy } = useLiteracy();
+  
   const { user, signOut } = useAuth();
   const { isActive } = useSubscription();
   const navigate = useNavigate();
@@ -68,8 +68,8 @@ export default function Navbar() {
           )
         }
       >
-        <Icon className={cn("shrink-0", literacyMode ? "h-5 w-5" : "h-4 w-4")} aria-hidden="true" />
-        <span className={cn(literacyMode && "text-base font-semibold")}>{t(item.key)}</span>
+        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>{t(item.key)}</span>
       </NavLink>
     );
   };
@@ -98,8 +98,8 @@ export default function Navbar() {
                   size="sm"
                   className="tap-target gap-2 text-sm font-medium text-foreground/80 hover:bg-secondary hover:text-secondary-foreground"
                 >
-                  <User className={cn("shrink-0", literacyMode ? "h-5 w-5" : "h-4 w-4")} />
-                  <span className={cn(literacyMode && "text-base font-semibold")}>Account</span>
+                  <User className="h-4 w-4 shrink-0" />
+                  <span>Account</span>
                   {isActive && <Sparkles className="h-3 w-3 text-[#16A34A]" aria-label="Premium" />}
                   <ChevronDown className="h-3.5 w-3.5" />
                 </Button>
@@ -128,14 +128,6 @@ export default function Navbar() {
 
         {/* Right cluster */}
         <div className="hidden items-center gap-2 lg:flex">
-          <Button
-            variant="ghost" size="sm" onClick={toggleLiteracy}
-            aria-pressed={literacyMode} aria-label="Toggle picture mode"
-            className={cn("tap-target gap-2", literacyMode && "bg-secondary text-primary")}
-          >
-            <Eye className="h-4 w-4" />
-            <span className="text-xs">{t("nav.literacy")}</span>
-          </Button>
           <Button
             variant="ghost" size="sm"
             onClick={() => setLanguage(language === "en" ? "hi" : "en")}
@@ -192,9 +184,6 @@ export default function Navbar() {
               )}
             </nav>
             <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
-              <Button variant="ghost" size="sm" onClick={toggleLiteracy} className="justify-start gap-2">
-                <Eye className="h-4 w-4" /> {t("nav.literacy")}
-              </Button>
               <Button
                 variant="ghost" size="sm"
                 onClick={() => setLanguage(language === "en" ? "hi" : "en")}
