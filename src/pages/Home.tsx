@@ -53,7 +53,7 @@ export default function Home() {
               {t("home.subcopy")}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button asChild size="lg" variant="secondary" className="tap-target font-semibold shadow-elegant">
+              <Button asChild size="lg" variant="ghost" className="tap-target font-semibold shadow-elegant bg-accent text-secondary-foreground">
                 <Link to="/eligibility">
                   {t("home.cta.eligibility")} <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
