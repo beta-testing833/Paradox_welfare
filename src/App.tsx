@@ -83,6 +83,9 @@ const App = () => (
                   <Route path="/agent/dashboard" element={<ProtectedRoute requiredRole="agent"><AgentDashboard /></ProtectedRoute>} />
                   <Route path="/agent/application/:id" element={<ProtectedRoute requiredRole="agent"><AgentApplicationDetail /></ProtectedRoute>} />
 
+                  {/* Admin */}
+                  <Route path="/admin/agents/new" element={<ProtectedRoute requiredRole="admin"><AdminCreateAgent /></ProtectedRoute>} />
+
                   {/* Catch-all 404 */}
                   <Route path="*" element={<NotFound />} />
                 </Route>
