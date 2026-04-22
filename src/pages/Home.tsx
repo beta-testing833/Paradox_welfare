@@ -49,7 +49,7 @@ export default function Home() {
             <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
               {t("home.heading")}
             </h1>
-            <p className="mt-5 max-w-2xl text-lg text-primary-foreground/90">
+            <p className="mt-5 max-w-2xl text-lg opacity-100 text-primary">
               {t("home.subcopy")}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
@@ -58,7 +58,7 @@ export default function Home() {
                   {t("home.cta.eligibility")} <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
-              <Button asChild size="lg" variant="outline" className="tap-target border-primary-foreground/40 bg-transparent font-semibold text-primary-foreground hover:bg-primary-foreground hover:text-primary">
+              <Button asChild size="lg" variant="outline" className="tap-target border-primary-foreground/40 font-semibold bg-secondary text-secondary-foreground">
                 <Link to="/schemes">{t("home.cta.schemes")}</Link>
               </Button>
             </div>
