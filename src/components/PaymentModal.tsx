@@ -26,7 +26,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Loader2, QrCode, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -298,11 +301,20 @@ export default function PaymentModal({
           <TabsContent value="upi" className="space-y-2 pt-3">
             <Label htmlFor="upi-id">UPI ID</Label>
             <Input id="upi-id" placeholder="yourname@upi" value={upi} onChange={(e) => setUpi(e.target.value)} />
+            <div className="mt-3 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-secondary/30 p-4 text-center">
+              <div className="h-24 w-24 rounded bg-muted flex items-center justify-center">
+                <QrCode className="h-12 w-12 text-muted-foreground" />
+              </div>
+              <p className="text-xs text-muted-foreground">Scan QR with any UPI app</p>
+              <p className="text-xs font-medium text-primary">or enter UPI ID above</p>
+            </div>
           </TabsContent>
 
           <TabsContent value="card" className="space-y-3 pt-3">
             <div>
-              <Label htmlFor="card-num">Card Number</Label>
+              <Label htmlFor="card-num" className="flex items-center gap-1">
+                <Lock className="h-3 w-3" /> Card Number
+              </Label>
               <Input id="card-num" placeholder="4111 1111 1111 1111" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -318,8 +330,24 @@ export default function PaymentModal({
           </TabsContent>
 
           <TabsContent value="netbanking" className="space-y-2 pt-3">
-            <Label htmlFor="bank">Bank Name</Label>
-            <Input id="bank" placeholder="e.g. SBI, HDFC" value={bank} onChange={(e) => setBank(e.target.value)} />
+            <Label htmlFor="bank">Select Bank</Label>
+            <Select value={bank} onValueChange={setBank}>
+              <SelectTrigger id="bank">
+                <SelectValue placeholder="Choose your bank" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SBI">State Bank of India (SBI)</SelectItem>
+                <SelectItem value="HDFC">HDFC Bank</SelectItem>
+                <SelectItem value="ICICI">ICICI Bank</SelectItem>
+                <SelectItem value="Axis">Axis Bank</SelectItem>
+                <SelectItem value="Kotak">Kotak Mahindra Bank</SelectItem>
+                <SelectItem value="PNB">Punjab National Bank</SelectItem>
+                <SelectItem value="BOB">Bank of Baroda</SelectItem>
+                <SelectItem value="Canara">Canara Bank</SelectItem>
+                <SelectItem value="UBI">Union Bank of India</SelectItem>
+                <SelectItem value="IDFC">IDFC First Bank</SelectItem>
+              </SelectContent>
+            </Select>
           </TabsContent>
         </Tabs>
 
@@ -328,7 +356,7 @@ export default function PaymentModal({
           {paying ? "Processing…" : `Pay ₹${amount.toLocaleString("en-IN")}`}
         </Button>
         <p className="mt-1 text-center text-xs text-muted-foreground">
-          This is a demo payment. No real transaction will occur.
+          Payments are secured by Razorpay. UPI, cards and net banking supported.
         </p>
       </DialogContent>
     </Dialog>
